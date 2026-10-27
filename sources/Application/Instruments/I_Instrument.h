@@ -82,6 +82,12 @@ public:
   virtual bool
   Start(int channel, unsigned char note,
         InstrumentStartMode mode = InstrumentStartMode::NewNote) = 0;
+  virtual bool StartWithVelocity(
+      int channel, unsigned char note, uint8_t velocity,
+      InstrumentStartMode mode = InstrumentStartMode::NewNote) {
+    (void)velocity;
+    return Start(channel, note, mode);
+  }
   virtual void Release(int channel) { (void)channel; }
   virtual void Stop(int channel) = 0;
 

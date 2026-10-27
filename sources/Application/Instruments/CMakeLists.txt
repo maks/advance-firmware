@@ -12,6 +12,7 @@ add_subdirectory(AdvanceFM6)
 add_library(application_instruments
   FM6Instrument.cpp
   CommandList.cpp
+  DecentSamplerPreset.cpp
   Filters.cpp
   I_Instrument.cpp
   InstrumentBank.cpp

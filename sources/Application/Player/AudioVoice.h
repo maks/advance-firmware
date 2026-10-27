@@ -56,7 +56,7 @@ public:
   explicit AudioVoice(int channel);
 
   bool StartInstrument(I_Instrument *instrument, unsigned char note,
-                       InstrumentStartMode mode);
+                       InstrumentStartMode mode, uint8_t velocity = 127);
   bool ProcessCommand(TrackerCommand command, ushort value);
   void ReleaseInstrument();
   void StopInstrument();

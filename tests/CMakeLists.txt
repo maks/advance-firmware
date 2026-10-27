@@ -41,6 +41,7 @@ add_executable(picoTracker_tests
   midi_in_device_tests.cpp
   midi_instrument_tests.cpp
   sample_source_instrument_tests.cpp
+  decent_sampler_preset_tests.cpp
   sid_instrument_tests.cpp
   pico_swarm_instrument_tests.cpp
   dwt_profiler_tests.cpp
@@ -102,6 +103,7 @@ add_executable(picoTracker_tests
   ../sources/Services/Audio/AudioDriver.cpp
   stubs/System/FileSystem/FakeFileSystem.cpp
   ../sources/Application/Instruments/CommandList.cpp
+  ../sources/Application/Instruments/DecentSamplerPreset.cpp
   ../sources/Application/Instruments/Filters.cpp
   ../sources/Application/Instruments/InstrumentBank.cpp
   ../sources/Application/Instruments/InstrumentNameVariable.cpp

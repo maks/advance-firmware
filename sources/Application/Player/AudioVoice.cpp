@@ -329,7 +329,7 @@ AudioVoice::AudioVoice(int channel)
 }
 
 bool AudioVoice::StartInstrument(I_Instrument *instrument, unsigned char note,
-                                 InstrumentStartMode mode) {
+                                 InstrumentStartMode mode, uint8_t velocity) {
   if (mode == InstrumentStartMode::Retrigger && source_ != instrument) {
     mode = InstrumentStartMode::NewNote;
   }
@@ -348,7 +348,8 @@ bool AudioVoice::StartInstrument(I_Instrument *instrument, unsigned char note,
   if (mode == InstrumentStartMode::Retrigger) {
     instrument->Stop(channel_);
   }
-  const bool started = instrument->Start(channel_, note, mode);
+  const bool started =
+      instrument->StartWithVelocity(channel_, note, velocity, mode);
   if (!started) {
     if (continueVoice || mode == InstrumentStartMode::Retrigger) {
       StopInstrument();

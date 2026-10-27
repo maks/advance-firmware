@@ -68,6 +68,16 @@ public:
   virtual bool CheckSampleFits(uint32_t sampleSize) = 0;
   virtual uint32_t GetAvailableSampleStorageSpace() = 0;
   virtual bool unloadSample(uint32_t i) = 0;
+
+  // Reserve stable storage for streamed instruments. Unlike resident sample
+  // slots, these allocations must never be compacted while an audio voice may
+  // reference them. Platforms without external sample memory can decline the
+  // reservation.
+  virtual void *ReserveStreamingStorage(uint32_t bytes) {
+    (void)bytes;
+    return nullptr;
+  }
+  virtual void ReleaseStreamingStorage(void *memory) { (void)memory; }
   int32_t ReloadSample(uint8_t index, const char *name);
 
 protected:

@@ -1894,7 +1894,7 @@ void Player::PlayDirectNote(unsigned short instrumentIndex,
     hex2char(static_cast<uint8_t>(instrumentIndex),
              instrumentOnChannel_[playerChannel]);
     mixer_.StartInstrument(playerChannel, instrument, note,
-                           InstrumentStartMode::NewNote);
+                           InstrumentStartMode::NewNote, velocity);
     state.StartChannel(static_cast<uint8_t>(playerChannel));
   }
 }
