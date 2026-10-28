@@ -1,3 +1,4 @@
+#include "System/Profiler/StreamingPerf.h"
 /*
  * SPDX-License-Identifier: BSD-3-Clause AND GPL-3.0-only
  *
@@ -10,7 +11,6 @@
  * Previously granted BSD permissions are preserved. See LICENSING.md.
  */
 
-#include "advEventManager.h"
 #include "Adapters/adv/audio/record.h"
 #include "Adapters/adv/midi/advMidiService.h"
 #include "Adapters/adv/system/advUsbRoleManager.h"
@@ -23,6 +23,7 @@
 #include "Application/Model/Config.h"
 #include "Services/Midi/MidiService.h"
 #include "System/Console/nanoprintf.h"
+#include "advEventManager.h"
 #include "advGUIWindowImp.h"
 #include "etl/map.h"
 #include "platform.h"
@@ -514,9 +515,16 @@ uint32_t readFromUSBCDC(char *buf, uint32_t len) {
 }
 
 void ProcessEvent(void *) {
+  uint32_t previousDispatch = 0;
   Event event(EventType::LAST);
   for (;;) {
     if (xQueueReceive(eventQueue, &event, portMAX_DELAY) == pdTRUE) {
+      const uint32_t now = DWT->CYCCNT;
+      if (previousDispatch != 0) {
+        StreamingPerfScope::Record(streamingPerf.uiGap, now - previousDispatch);
+      }
+      previousDispatch = now;
+      StreamingPerfScope perf(streamingPerf.uiDispatch);
       advGUIWindowImp::ProcessEvent(event);
     }
   }

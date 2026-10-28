@@ -3,6 +3,7 @@
  */
 
 #include "SampleStreamService.h"
+#include "System/Profiler/StreamingPerf.h"
 
 #include "System/FileSystem/FileHandle.h"
 #include "System/FileSystem/FileSystem.h"
@@ -50,6 +51,7 @@ void StreamWorker(void *) {
       continue;
     }
 
+    StreamingPerfScope perf(streamingPerf.streamRead);
     FileHandle file = FileSystem::GetInstance()->Open(request.path_, "r");
     if (!file) {
       complete(request, 3);
