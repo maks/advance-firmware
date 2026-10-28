@@ -15,10 +15,10 @@
 #include <cstring>
 #include <utility>
 
-__attribute__((section(".SDRAM2"))) __attribute__((aligned(32)))
-uint8_t sampleStore1[STORE1_SIZE];
-__attribute__((section(".SDRAM1"))) __attribute__((aligned(32)))
-uint8_t sampleStore2[STORE2_SIZE];
+__attribute__((section(".SDRAM2")))
+__attribute__((aligned(32))) uint8_t sampleStore1[STORE1_SIZE];
+__attribute__((section(".SDRAM1")))
+__attribute__((aligned(32))) uint8_t sampleStore2[STORE2_SIZE];
 
 uint32_t advSamplePool::writeOffset1_ = 0;
 uint32_t advSamplePool::writeOffset2_ = 0;
@@ -60,7 +60,9 @@ void advSamplePool::Reset() {
   writeOffset2_ = 0;
   storeLimit1_ = STORE1_SIZE;
   storeLimit2_ = STORE2_SIZE;
-  memset(streamingReservations, 0, sizeof(streamingReservations));
+  for (auto &reservation : streamingReservations) {
+    reservation = {};
+  }
 };
 
 bool advSamplePool::CheckSampleFits(uint32_t sampleSize) {
@@ -143,8 +145,7 @@ void advSamplePool::ReleaseStreamingStorage(void *memory) {
       advanced = false;
       uint32_t &limit = reservation.store_ == 1 ? storeLimit1_ : storeLimit2_;
       for (auto &candidate : streamingReservations) {
-        if (candidate.state_ == 2 &&
-            candidate.store_ == reservation.store_ &&
+        if (candidate.state_ == 2 && candidate.store_ == reservation.store_ &&
             candidate.offset_ + candidate.size_ == limit) {
           limit += candidate.size_;
           candidate = {};

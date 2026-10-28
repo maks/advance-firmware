@@ -310,6 +310,16 @@ unsigned short InstrumentBank::GetNextAndAssignID(InstrumentType type,
     assignInstrument(id, picoSwarm);
     return id;
   } break;
+  case IT_MSAMPLER: {
+    MSamplerInstrument *msampler = instrumentPool_.create<MSamplerInstrument>();
+    if (msampler == nullptr) {
+      Trace::Error("MSAMPLER INSTRUMENT EXHAUSTED!");
+      return NO_MORE_INSTRUMENT;
+    }
+    msampler->Init();
+    assignInstrument(id, msampler);
+    return id;
+  } break;
   case IT_NONE:
     assignInstrument(id, &none_);
     return id;
@@ -344,6 +354,9 @@ void InstrumentBank::releaseInstrument(unsigned short id) {
     break;
   case IT_PICO_SWARM:
     instrumentPool_.destroy(static_cast<picoSwarmInstrument *>(instrument));
+    break;
+  case IT_MSAMPLER:
+    instrumentPool_.destroy(static_cast<MSamplerInstrument *>(instrument));
     break;
   case IT_NONE:
     // NA: None is a "singleton" so no need to release from pool

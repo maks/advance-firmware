@@ -601,8 +601,7 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
   fileEntries_.clear();
   const bool listed = fs->ListDirectory(
       nextDir.c_str(), &fileEntries_,
-      importingDx7Patch ? DX7_BANK_FILE_EXTENSION : INSTRUMENT_FILE_EXTENSION,
-      false);
+      importingDx7Patch ? DX7_BANK_FILE_EXTENSION : nullptr, false);
   const bool truncated = isDirectoryListTruncated(fs);
   if (!listed && !truncated) {
     Trace::Error("INSTRUMENTIMPORT: Failed to list %s", nextDir.c_str());

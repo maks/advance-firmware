@@ -42,6 +42,7 @@ add_executable(picoTracker_tests
   midi_instrument_tests.cpp
   sample_source_instrument_tests.cpp
   decent_sampler_preset_tests.cpp
+  msampler_instrument_tests.cpp
   sid_instrument_tests.cpp
   pico_swarm_instrument_tests.cpp
   dwt_profiler_tests.cpp
@@ -108,12 +109,15 @@ add_executable(picoTracker_tests
   ../sources/Application/Instruments/InstrumentBank.cpp
   ../sources/Application/Instruments/InstrumentNameVariable.cpp
   ../sources/Application/Instruments/MidiInstrument.cpp
+  ../sources/Application/Instruments/MSamplerInstrument.cpp
+  ../sources/Application/Instruments/SampleStreamService.cpp
   ../sources/Application/Instruments/NoneInstrument.cpp
   ../sources/Application/Instruments/SRPUpdaters.cpp
   ../sources/Application/Instruments/SampleInstrument.cpp
   ../sources/Application/Instruments/SampleSourceInstrument.cpp
   ../sources/Application/Instruments/SamplePool.cpp
   ../sources/Application/Instruments/SampleVariable.cpp
+  ../sources/Adapters/wasm/system/WasmSamplePool.cpp
   ../sources/Application/Instruments/SIDInstrument.cpp
   ../sources/Application/Instruments/SoundSource.cpp
   ../sources/Application/Instruments/picoSwarmInstrument.cpp

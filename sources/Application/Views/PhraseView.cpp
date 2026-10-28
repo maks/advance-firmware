@@ -59,6 +59,8 @@ char instrumentTypeLetter(I_Instrument *instrument) {
     return 'L';
   case IT_PICO_SWARM:
     return 'W';
+  case IT_MSAMPLER:
+    return 'D';
   case IT_LAST:
     return '_';
   }
@@ -100,7 +102,7 @@ PhraseView::PhraseView(GUIWindow &w, ViewData *viewData)
   };
 }
 
-PhraseView::~PhraseView(){};
+PhraseView::~PhraseView() {};
 
 void PhraseView::Reset() {
   phrase_ = &(viewData_->song_->phrase_);

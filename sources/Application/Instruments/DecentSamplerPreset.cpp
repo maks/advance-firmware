@@ -8,6 +8,7 @@
 #include "Externals/yxml/yxml.h"
 #include "System/FileSystem/FileHandle.h"
 #include "System/FileSystem/FileSystem.h"
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 
@@ -19,7 +20,8 @@ constexpr size_t MaxAttributeValue = 191;
 struct ElementFrame {
   char name_[32]{};
   bool enabled_ = true;
-  uint8_t sequenceMode_ = 0; // only "always" is supported
+  uint8_t sequenceMode_ = 0; // 0 always, 1 round-robin, 2 unsupported
+  uint16_t sequencePosition_ = 1;
   DecentSamplerZone zone_{};
   bool hasZone_ = false;
   bool hasRootNote_ = false;
@@ -37,8 +39,7 @@ struct ParserWorkspace {
 };
 
 #if defined(ADV) && !defined(HOST_TEST)
-ParserWorkspace parserWorkspace
-    __attribute__((section(".RAM_D3"), aligned(8)));
+ParserWorkspace parserWorkspace __attribute__((section(".RAM_D3"), aligned(8)));
 #else
 ParserWorkspace parserWorkspace;
 #endif
@@ -96,13 +97,14 @@ bool parseNote(const char *text, uint8_t &note) {
     --semitone;
     ++index;
   }
-  if (text[index] == '\0') {
-    return false;
-  }
+  const bool hasOctave = text[index] != '\0';
   char *end = nullptr;
-  const long octave = std::strtol(text + index, &end, 10);
-  if (end == text + index || *end != '\0') {
-    return false;
+  long octave = 2;
+  if (hasOctave) {
+    octave = std::strtol(text + index, &end, 10);
+    if (end == text + index || *end != '\0') {
+      return false;
+    }
   }
   const long midi = ((octave + 1) * 12) + semitone;
   if (midi < 0 || midi > 127) {
@@ -124,8 +126,7 @@ DecentSamplerPresetResult resolveSamplePath(const char *presetPath,
                                             char *resolved,
                                             size_t resolvedSize) {
   if (samplePath == nullptr || samplePath[0] == '\0') {
-    return fail(DecentSamplerPresetError::MissingSample,
-                "sample has no path");
+    return fail(DecentSamplerPresetError::MissingSample, "sample has no path");
   }
   char normalizedLeaf[MaxAttributeValue + 1]{};
   const size_t length = std::strlen(samplePath);
@@ -136,7 +137,8 @@ DecentSamplerPresetResult resolveSamplePath(const char *presetPath,
   for (size_t i = 0; i <= length; ++i) {
     normalizedLeaf[i] = samplePath[i] == '\\' ? '/' : samplePath[i];
   }
-  if (normalizedLeaf[0] == '/' || std::strstr(normalizedLeaf, "../") != nullptr ||
+  if (normalizedLeaf[0] == '/' ||
+      std::strstr(normalizedLeaf, "../") != nullptr ||
       endsWith(normalizedLeaf, "/..")) {
     return fail(DecentSamplerPresetError::InvalidMapping,
                 "sample path must stay inside the preset folder");
@@ -165,7 +167,8 @@ DecentSamplerPresetResult resolveSamplePath(const char *presetPath,
   return {};
 }
 
-DecentSamplerPresetResult validateWav(const char *path, uint32_t &frames) {
+DecentSamplerPresetResult validateWav(const char *path, uint32_t &frames,
+                                      uint8_t &channels, uint32_t &dataOffset) {
   FileHandle file = FileSystem::GetInstance()->Open(path, "r");
   if (!file) {
     return fail(DecentSamplerPresetError::MissingSample,
@@ -180,14 +183,15 @@ DecentSamplerPresetResult validateWav(const char *path, uint32_t &frames) {
                 "WAV must be 16-bit PCM, mono or stereo, 44.1 kHz");
   }
   frames = header->dataChunkSize / header->blockAlign;
+  channels = static_cast<uint8_t>(header->numChannels);
+  dataOffset = header->dataOffset;
   return {};
 }
 
 DecentSamplerPresetResult validateZone(DecentSamplerZone &zone,
                                        const char *presetPath) {
   if (!zone.path_[0]) {
-    return fail(DecentSamplerPresetError::MissingSample,
-                "sample has no path");
+    return fail(DecentSamplerPresetError::MissingSample, "sample has no path");
   }
   char samplePath[PFILENAME_SIZE]{};
   auto pathResult =
@@ -197,7 +201,8 @@ DecentSamplerPresetResult validateZone(DecentSamplerZone &zone,
   }
   std::memcpy(zone.path_, samplePath, std::strlen(samplePath) + 1);
   uint32_t frameCount = 0;
-  auto wavResult = validateWav(zone.path_, frameCount);
+  auto wavResult =
+      validateWav(zone.path_, frameCount, zone.channelCount_, zone.dataOffset_);
   if (!wavResult) {
     return wavResult;
   }
@@ -207,22 +212,21 @@ DecentSamplerPresetResult validateZone(DecentSamplerZone &zone,
     return fail(DecentSamplerPresetError::InvalidMapping,
                 "sample start/end is outside its WAV");
   }
+  zone.frameCount_ = frameCount;
   return {};
 }
 
 } // namespace
 
-DecentSamplerPresetResult LoadDecentSamplerPreset(
-    const char *presetPath, DecentSamplerPreset &preset) {
+DecentSamplerPresetResult LoadDecentSamplerPreset(const char *presetPath,
+                                                  DecentSamplerPreset &preset) {
   preset.zoneCount_ = 0;
   if (presetPath == nullptr) {
-    return fail(DecentSamplerPresetError::OpenFailed,
-                "preset path is empty");
+    return fail(DecentSamplerPresetError::OpenFailed, "preset path is empty");
   }
   FileHandle file = FileSystem::GetInstance()->Open(presetPath, "r");
   if (!file) {
-    return fail(DecentSamplerPresetError::OpenFailed,
-                "could not open preset");
+    return fail(DecentSamplerPresetError::OpenFailed, "could not open preset");
   }
 
   parserWorkspace.parser_ = {};
@@ -243,16 +247,39 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
   char *value = parserWorkspace.value_;
   size_t &valueLength = parserWorkspace.valueLength_;
   bool rootSeen = false;
+  bool previousWasQuote = false;
+  bool insideAttributeValue = false;
+  int pendingCharacter = -1;
   uint64_t bytesRead = 0;
 
   while (true) {
-    const int character = file->GetC();
+    int character = pendingCharacter >= 0 ? pendingCharacter : file->GetC();
+    pendingCharacter = -1;
     if (character == EOF) {
       break;
     }
-    if (++bytesRead > MaxPresetBytes) {
+    if (bytesRead >= MaxPresetBytes) {
       return fail(DecentSamplerPresetError::MalformedXml,
                   "preset exceeds the 1 MiB import limit", parser.line);
+    }
+    ++bytesRead;
+
+    // Accept the common hand-authored typo where adjacent attributes have no
+    // separating whitespace, while continuing to feed strict XML to yxml.
+    bool insertedSeparator = false;
+    if (previousWasQuote && !std::isspace(character) && character != '/' &&
+        character != '>') {
+      pendingCharacter = character;
+      character = ' ';
+      insertedSeparator = true;
+    }
+    if (insertedSeparator) {
+      previousWasQuote = false;
+    } else if (character == '"') {
+      insideAttributeValue = !insideAttributeValue;
+      previousWasQuote = !insideAttributeValue;
+    } else {
+      previousWasQuote = false;
     }
 
     const yxml_ret_t result = yxml_parse(&parser, character);
@@ -265,8 +292,7 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
       } else if (result == YXML_EREF) {
         message = "preset XML contains an invalid entity";
       }
-      return fail(DecentSamplerPresetError::MalformedXml,
-                  message, parser.line);
+      return fail(DecentSamplerPresetError::MalformedXml, message, parser.line);
     }
     if (result == YXML_ELEMSTART) {
       if (depth >= MaxXmlDepth) {
@@ -335,16 +361,16 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
       } else if (std::strcmp(attribute, "seqMode") == 0) {
         if (std::strcmp(value, "always") == 0) {
           frame.sequenceMode_ = 0;
-        } else if (std::strcmp(value, "round_robin") == 0 ||
-                   std::strcmp(value, "random") == 0 ||
-                   std::strcmp(value, "true_random") == 0) {
+        } else if (std::strcmp(value, "round_robin") == 0) {
           frame.sequenceMode_ = 1;
+        } else if (std::strcmp(value, "random") == 0 ||
+                   std::strcmp(value, "true_random") == 0) {
+          frame.sequenceMode_ = 2;
         } else {
           return fail(DecentSamplerPresetError::InvalidMapping,
                       "unknown seqMode value", parser.line);
         }
-      } else if (std::strcmp(attribute, "rootNote") == 0 &&
-                 frame.hasZone_) {
+      } else if (std::strcmp(attribute, "rootNote") == 0 && frame.hasZone_) {
         if (!parseNote(value, frame.zone_.rootNote_)) {
           return fail(DecentSamplerPresetError::InvalidMapping,
                       "rootNote must be a MIDI note or note name with octave",
@@ -356,12 +382,13 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
                  frame.hasZone_) {
         uint8_t note = 0;
         if (!parseNote(value, note)) {
-          return fail(DecentSamplerPresetError::InvalidMapping,
-                      "loNote/hiNote must be a MIDI note or note name with octave",
-                      parser.line);
+          return fail(
+              DecentSamplerPresetError::InvalidMapping,
+              "loNote/hiNote must be a MIDI note or note name with octave",
+              parser.line);
         }
         (std::strcmp(attribute, "loNote") == 0 ? frame.zone_.lowNote_
-                                                : frame.zone_.highNote_) = note;
+                                               : frame.zone_.highNote_) = note;
       } else if ((std::strcmp(attribute, "loVel") == 0 ||
                   std::strcmp(attribute, "hiVel") == 0) &&
                  frame.hasZone_) {
@@ -370,9 +397,9 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
           return fail(DecentSamplerPresetError::InvalidMapping,
                       "loVel/hiVel must be between 0 and 127", parser.line);
         }
-        (std::strcmp(attribute, "loVel") == 0
-             ? frame.zone_.lowVelocity_
-             : frame.zone_.highVelocity_) = static_cast<uint8_t>(velocity);
+        (std::strcmp(attribute, "loVel") == 0 ? frame.zone_.lowVelocity_
+                                              : frame.zone_.highVelocity_) =
+            static_cast<uint8_t>(velocity);
       } else if (std::strcmp(attribute, "path") == 0 && frame.hasZone_) {
         if (std::strlen(value) >= sizeof(frame.zone_.path_)) {
           return fail(DecentSamplerPresetError::InvalidMapping,
@@ -391,22 +418,29 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
              std::strcmp(value, "normal") != 0)) {
           frame.unsupported_ = true;
         }
-      } else if (frame.hasZone_ &&
-                 (std::strcmp(attribute, "seqPosition") == 0 ||
-                  std::strcmp(attribute, "seqLength") == 0)) {
-        // These attributes have no effect with seqMode="always".
+      } else if (frame.hasZone_ && std::strcmp(attribute, "seqPosition") == 0) {
+        uint32_t sequencePosition = 0;
+        if (!parseUnsigned(value, UINT16_MAX, sequencePosition) ||
+            sequencePosition == 0) {
+          return fail(DecentSamplerPresetError::InvalidMapping,
+                      "seqPosition must be a positive integer", parser.line);
+        }
+        frame.sequencePosition_ = static_cast<uint16_t>(sequencePosition);
+      } else if (frame.hasZone_ && std::strcmp(attribute, "seqLength") == 0) {
+        // Sequence length is metadata when the first sample in a round robin
+        // group is selected for this initial playback implementation.
       } else if (frame.hasZone_ &&
                  (std::strcmp(attribute, "releaseTrigger") == 0 ||
                   std::strcmp(attribute, "trigger") == 0 ||
                   std::strcmp(attribute, "loopCrossfade") == 0)) {
         frame.unsupported_ = true;
-      } else if (frame.hasZone_ &&
-                 (std::strcmp(attribute, "start") == 0 ||
-                  std::strcmp(attribute, "end") == 0)) {
+      } else if (frame.hasZone_ && (std::strcmp(attribute, "start") == 0 ||
+                                    std::strcmp(attribute, "end") == 0)) {
         uint32_t framePosition = 0;
         if (!parseUnsigned(value, UINT32_MAX - 1, framePosition)) {
           return fail(DecentSamplerPresetError::InvalidMapping,
-                      "sample start/end must be a nonnegative frame", parser.line);
+                      "sample start/end must be a nonnegative frame",
+                      parser.line);
         }
         if (std::strcmp(attribute, "start") == 0) {
           frame.zone_.startFrame_ = framePosition;
@@ -425,9 +459,14 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
           --depth;
           continue;
         }
-        if (frame.sequenceMode_ != 0 || frame.unsupported_) {
+        if (frame.sequenceMode_ == 1 && frame.sequencePosition_ != 1) {
+          --depth;
+          continue;
+        }
+        if (frame.sequenceMode_ == 2 || frame.unsupported_) {
           return fail(DecentSamplerPresetError::UnsupportedFeature,
-                      "sample uses loops, triggers, or sequencing outside the supported subset",
+                      "sample uses loops, triggers, or sequencing outside the "
+                      "supported subset",
                       parser.line);
         }
         if (!frame.hasPath_ || !frame.hasRootNote_ ||
@@ -444,27 +483,20 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(
         }
         if (preset.zoneCount_ >= DecentSamplerPreset::MaxZones) {
           return fail(DecentSamplerPresetError::TooManyZones,
-                      "preset has more than 128 sample zones", parser.line);
+                      "preset exceeds the 512-zone import limit", parser.line);
         }
-        for (uint16_t i = 0; i < preset.zoneCount_; ++i) {
-          const auto &existing = preset.zones_[i];
-          const bool noteOverlap = frame.zone_.lowNote_ <= existing.highNote_ &&
-                                   existing.lowNote_ <= frame.zone_.highNote_;
-          const bool velocityOverlap =
-              frame.zone_.lowVelocity_ <= existing.highVelocity_ &&
-              existing.lowVelocity_ <= frame.zone_.highVelocity_;
-          if (noteOverlap && velocityOverlap) {
-            return fail(DecentSamplerPresetError::OverlappingZones,
-                        "sample key and velocity ranges overlap", parser.line);
-          }
-        }
+        // A preset may contain adjacent velocity bands with an inclusive
+        // shared endpoint, or a special articulation over a pitched zone.
+        // V1 does not layer audio: MSamplerInstrument resolves any overlap by
+        // taking the first matching sample in preset order.
         preset.zones_[preset.zoneCount_++] = frame.zone_;
       }
       --depth;
     }
   }
 
-  if (file->Error() != 0 || !rootSeen || depth != 0) {
+  if (file->Error() != 0 || !rootSeen || depth != 0 ||
+      yxml_eof(&parser) != YXML_OK) {
     return fail(DecentSamplerPresetError::MalformedXml,
                 "preset XML ended unexpectedly", parser.line);
   }

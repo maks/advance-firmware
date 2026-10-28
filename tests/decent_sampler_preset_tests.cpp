@@ -57,25 +57,26 @@ TEST_CASE("DecentSampler imports one supported key and velocity zone") {
         0);
 }
 
-TEST_CASE("DecentSampler rejects overlapping mapping zones") {
+TEST_CASE("DecentSampler keeps preset order for overlapping mapping zones") {
   FakeFileSystem fileSystem;
   FileSystemScope fileSystemScope(&fileSystem);
   fileSystem.AddDirectory("/instruments");
   addPcm16Wav(fileSystem, "/instruments/C4.wav");
-  fileSystem.AddFile(
-      "/instruments/Overlap.dspreset",
-      "<DecentSampler><groups><group>"
-      "<sample path=\"C4.wav\" rootNote=\"C4\" loNote=\"60\" "
-      "hiNote=\"60\" loVel=\"1\" hiVel=\"127\"/>"
-      "<sample path=\"C4.wav\" rootNote=\"C4\" loNote=\"60\" "
-      "hiNote=\"60\" loVel=\"64\" hiVel=\"127\"/>"
-      "</group></groups></DecentSampler>");
+  fileSystem.AddFile("/instruments/Overlap.dspreset",
+                     "<DecentSampler><groups><group>"
+                     "<sample path=\"C4.wav\" rootNote=\"C4\" loNote=\"60\" "
+                     "hiNote=\"60\" loVel=\"1\" hiVel=\"127\"/>"
+                     "<sample path=\"C4.wav\" rootNote=\"C4\" loNote=\"60\" "
+                     "hiNote=\"60\" loVel=\"64\" hiVel=\"127\"/>"
+                     "</group></groups></DecentSampler>");
 
   DecentSamplerPreset preset;
   const auto result =
       LoadDecentSamplerPreset("/instruments/Overlap.dspreset", preset);
-  CHECK_FALSE(result);
-  CHECK(result.error_ == DecentSamplerPresetError::OverlappingZones);
+  REQUIRE(result);
+  REQUIRE(preset.zoneCount_ == 2);
+  CHECK(preset.zones_[0].lowVelocity_ == 1);
+  CHECK(preset.zones_[1].lowVelocity_ == 64);
 }
 
 TEST_CASE("DecentSampler rejects malformed XML before opening its samples") {
@@ -83,8 +84,7 @@ TEST_CASE("DecentSampler rejects malformed XML before opening its samples") {
   FileSystemScope fileSystemScope(&fileSystem);
   fileSystem.AddDirectory("/instruments");
   fileSystem.AddFile("/instruments/Broken.dspreset",
-                     "<DecentSampler><groups><sample path=\"x.wav\""
-                     "rootNote=\"C4\"/></groups></DecentSampler>");
+                     "<DecentSampler><groups></other></DecentSampler>");
 
   DecentSamplerPreset preset;
   const auto result =

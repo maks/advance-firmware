@@ -20,11 +20,13 @@ add_library(application_instruments
   LFOSettings.cpp
   StarLoomInstrument.cpp
   MidiInstrument.cpp
+  MSamplerInstrument.cpp
   NoneInstrument.cpp
   SRPUpdaters.cpp
   SampleInstrument.cpp
   SampleSourceInstrument.cpp
   SamplePool.cpp
+  SampleStreamService.cpp
   SampleVariable.cpp
   SIDInstrument.cpp
   SoundSource.cpp
