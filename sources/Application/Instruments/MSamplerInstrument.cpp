@@ -8,6 +8,7 @@
 #include "Application/Instruments/SampleStreamService.h"
 #include "System/Console/Trace.h"
 #include "System/FileSystem/PathUtils.h"
+#include "System/Profiler/StreamingPerf.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -172,6 +173,7 @@ bool MSamplerInstrument::StartWithVelocity(int channel, unsigned char note,
     ++state.generation_;
   }
   state.active_ = true;
+  state.starved_ = false;
   state.zoneIndex_ = zoneIndex;
   state.position_ = static_cast<float>(preset_->zones_[zoneIndex].startFrame_);
   state.baseSpeed_ =
@@ -255,60 +257,50 @@ bool MSamplerInstrument::queuePage(uint8_t channel, StreamPage &page) {
   return true;
 }
 
-bool MSamplerInstrument::readFrame(uint8_t channel, uint32_t frame, float &left,
-                                   float &right) {
+void MSamplerInstrument::servicePages(uint8_t channel, uint32_t frame) {
   ChannelState &state = channels_[channel];
-  const DecentSamplerZone &zone = preset_->zones_[state.zoneIndex_];
-  const uint32_t attackEnd = zone.startFrame_ + zone.attackFrames_;
-  const int16_t *source = nullptr;
-  if (frame >= zone.startFrame_ && frame < attackEnd) {
-    source = reinterpret_cast<const int16_t *>(arena_ + zone.attackOffset_) +
-             (frame - zone.startFrame_) * zone.channelCount_;
-  } else {
-    for (StreamPage &page : state.pages_) {
-      const uint8_t pageState = page.state_.load(std::memory_order_acquire);
-      if (pageState == kPageFailed && page.generation_ == state.generation_) {
-        state.releaseSamples_ = ReleaseRampSamples;
-      } else if (pageState == kPageReady &&
-                 page.generation_ != state.generation_) {
-        page.state_.store(kPageEmpty, std::memory_order_release);
-      } else if (pageState == kPageReady && frame >= page.startFrame_ &&
-                 frame < page.startFrame_ + page.frameCount_) {
-        source = page.data_ + (frame - page.startFrame_) * zone.channelCount_;
-        break;
-      }
-    }
-  }
-
-  if (source == nullptr) {
-    for (auto &page : state.pages_) {
-      if (page.state_.load(std::memory_order_acquire) == kPageEmpty) {
-        page.data_ = reinterpret_cast<int16_t *>(
-            arena_ + streamBase_ +
-            (static_cast<uint32_t>(channel) * PagesPerChannel +
-             static_cast<uint32_t>(&page - state.pages_.data())) *
-                StreamPageBytes);
-        queuePage(channel, page);
-      }
-    }
-    return false;
-  }
-
-  // Recycle a page as soon as playback has moved past it. Keeping two pages
-  // permanently marked ready would let playback reach only the first 16k
-  // streamed frames before running out of buffers.
   for (auto &page : state.pages_) {
-    if (page.state_.load(std::memory_order_acquire) == kPageReady &&
-        page.generation_ == state.generation_ &&
-        frame >= page.startFrame_ + page.frameCount_) {
+    const uint8_t status = page.state_.load(std::memory_order_acquire);
+    if (status == kPageLoading) {
+      continue;
+    }
+    if (page.generation_ != state.generation_ ||
+        (status == kPageReady &&
+         frame >= page.startFrame_ + page.frameCount_)) {
       page.state_.store(kPageEmpty, std::memory_order_release);
+    }
+    if (page.state_.load(std::memory_order_relaxed) == kPageEmpty) {
+      page.data_ = reinterpret_cast<int16_t *>(
+          arena_ + streamBase_ +
+          (static_cast<uint32_t>(channel) * PagesPerChannel +
+           static_cast<uint32_t>(&page - state.pages_.data())) *
+              StreamPageBytes);
       queuePage(channel, page);
     }
   }
+}
 
-  left = source[0] / kPcmScale;
-  right = zone.channelCount_ == 2 ? source[1] / kPcmScale : left;
-  return true;
+MSamplerInstrument::SampleSpan
+MSamplerInstrument::findSpan(uint8_t channel, uint32_t frame) const {
+  const ChannelState &state = channels_[channel];
+  const auto &zone = preset_->zones_[state.zoneIndex_];
+  const uint32_t attackEnd = zone.startFrame_ + zone.attackFrames_;
+  if (frame >= zone.startFrame_ && frame < attackEnd) {
+    return {.data_ =
+                reinterpret_cast<const int16_t *>(arena_ + zone.attackOffset_),
+            .begin_ = zone.startFrame_,
+            .end_ = attackEnd};
+  }
+  for (const auto &page : state.pages_) {
+    if (page.state_.load(std::memory_order_acquire) == kPageReady &&
+        page.generation_ == state.generation_ && frame >= page.startFrame_ &&
+        frame < page.startFrame_ + page.frameCount_) {
+      return {.data_ = page.data_,
+              .begin_ = page.startFrame_,
+              .end_ = page.startFrame_ + page.frameCount_};
+    }
+  }
+  return {};
 }
 
 bool MSamplerInstrument::Render(int channel, AudioSample *buffer, int size,
@@ -322,33 +314,63 @@ bool MSamplerInstrument::Render(int channel, AudioSample *buffer, int size,
   if (!state.active_ || state.zoneIndex_ == InvalidZone || preset_ == nullptr) {
     return false;
   }
-
-  const DecentSamplerZone &zone = preset_->zones_[state.zoneIndex_];
+  const uint8_t voice = static_cast<uint8_t>(channel);
+  const auto &zone = preset_->zones_[state.zoneIndex_];
   const uint32_t endFrame =
       zone.endFrame_ == 0 ? zone.frameCount_ : zone.endFrame_;
-  for (int index = 0; index < size; ++index) {
+  const uint32_t channels = zone.channelCount_;
+  servicePages(voice, static_cast<uint32_t>(state.position_));
+  SampleSpan span{};
+  for (int32_t index = 0; index < size; ++index) {
     const uint32_t frame = static_cast<uint32_t>(state.position_);
-    float left = 0.0f;
-    float right = 0.0f;
-    if (frame >= endFrame) {
+    float left = state.lastLeft_;
+    float right = state.lastRight_;
+    if (frame >= endFrame || state.starved_) {
       if (state.releaseSamples_ == 0) {
         state.releaseSamples_ = ReleaseRampSamples;
       }
-      left = state.lastLeft_;
-      right = state.lastRight_;
-    } else if (readFrame(static_cast<uint8_t>(channel), frame, left, right)) {
-      const uint32_t nextFrame = std::min(frame + 1, endFrame - 1);
-      float nextLeft = left;
-      float nextRight = right;
-      readFrame(static_cast<uint8_t>(channel), nextFrame, nextLeft, nextRight);
-      const float fraction = state.position_ - static_cast<float>(frame);
-      left += (nextLeft - left) * fraction;
-      right += (nextRight - right) * fraction;
-      state.position_ += state.speed_;
-      state.lastLeft_ = left;
-      state.lastRight_ = right;
+    } else {
+      if (span.data_ == nullptr || frame < span.begin_ || frame >= span.end_) {
+        // Only inspect atomic page state at block/span boundaries. Never
+        // recycle the current page while the interpolation neighbour is read.
+        servicePages(voice, frame);
+        span = findSpan(voice, frame);
+      }
+      if (span.data_ == nullptr) {
+        state.starved_ = true;
+        state.releaseSamples_ = ReleaseRampSamples;
+#if defined(ADV)
+        streamingPerf.pageMisses = streamingPerf.pageMisses + 1;
+#endif
+      } else {
+        const int16_t *source = span.data_ + (frame - span.begin_) * channels;
+        left = source[0] / kPcmScale;
+        right = channels == 2 ? source[1] / kPcmScale : left;
+        const uint32_t nextFrame = std::min(frame + 1, endFrame - 1);
+        const int16_t *next = source;
+        if (nextFrame < span.end_) {
+          next = span.data_ + (nextFrame - span.begin_) * channels;
+        } else {
+          const SampleSpan adjacent = findSpan(voice, nextFrame);
+          if (adjacent.data_ != nullptr) {
+            next = adjacent.data_ + (nextFrame - adjacent.begin_) * channels;
+          } else {
+#if defined(ADV)
+            streamingPerf.interpolationMisses =
+                streamingPerf.interpolationMisses + 1;
+#endif
+          }
+        }
+        const float fraction = state.position_ - static_cast<float>(frame);
+        left += (next[0] / kPcmScale - left) * fraction;
+        const float nextRight =
+            channels == 2 ? next[1] / kPcmScale : next[0] / kPcmScale;
+        right += (nextRight - right) * fraction;
+        state.position_ += state.speed_;
+        state.lastLeft_ = left;
+        state.lastRight_ = right;
+      }
     }
-
     float gain = state.level_;
     if (state.releaseSamples_ > 0) {
       gain *= static_cast<float>(state.releaseSamples_) / ReleaseRampSamples;
@@ -363,6 +385,9 @@ bool MSamplerInstrument::Render(int channel, AudioSample *buffer, int size,
       std::fill(buffer + (index + 1) * 2, buffer + size * 2, 0.0f);
       break;
     }
+  }
+  if (state.active_ && !state.starved_) {
+    servicePages(voice, static_cast<uint32_t>(state.position_));
   }
   return true;
 }
@@ -486,7 +511,7 @@ void MSamplerInstrument::clearState(ChannelState &state) {
 
 void MSamplerInstrument::releaseArena() {
   if (arena_ != nullptr) {
-    SampleStreamService::Wait(pendingReads_);
+    SampleStreamService::Release(pendingReads_);
     SamplePool::GetInstance()->ReleaseStreamingStorage(arena_);
     arena_ = nullptr;
     preset_ = nullptr;

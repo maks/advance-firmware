@@ -15,6 +15,8 @@ public:
                    uint32_t bytes, std::atomic<uint8_t> &state,
                    std::atomic<uint16_t> &pending);
   static void Wait(std::atomic<uint16_t> &pending);
+  // Called from lifecycle/UI code only, after stopping new requests.
+  static void Release(std::atomic<uint16_t> &pending);
 };
 
 #endif

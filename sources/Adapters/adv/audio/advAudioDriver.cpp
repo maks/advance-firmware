@@ -15,7 +15,7 @@
 #include "System/Profiler/StreamingPerf.h"
 
 extern "C" {
-volatile StreamingPerfCounters streamingPerf = {.version = 1};
+volatile StreamingPerfCounters streamingPerf = {.version = 2};
 }
 #include "Application/Mixer/MixerService.h"
 #include "Application/Model/Config.h"

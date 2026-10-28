@@ -1,0 +1,5 @@
+0x080d4f28 in vTaskSwitchContext () at /home/maks/work/xiphonics/picoTracker_STM/sources/Externals/FreeRTOS-Kernel/tasks.c:5153
+5153	            taskCHECK_FOR_STACK_OVERFLOW();
+$1 = {<std::__atomic_base<unsigned short>> = {static _S_alignment = 2, _M_i = 0}, static is_always_lock_free = true}
+$2 = 3293216
+$3 = {path_ = "/instruments/Basic Piano.dsbundle/Samples/DefaultPiano-21.wav", '\000' <repeats 194 times>, rootNote_ = 21 '\025', lowNote_ = 21 '\025', highNote_ = 21 '\025', lowVelocity_ = 0 '\000', highVelocity_ = 127 '\177', channelCount_ = 2 '\002', dataOffset_ = 78, frameCount_ = 740409, startFrame_ = 0, endFrame_ = 0, attackOffset_ = 147488, attackFrames_ = 87376}

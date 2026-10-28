@@ -524,8 +524,16 @@ void ProcessEvent(void *) {
         StreamingPerfScope::Record(streamingPerf.uiGap, now - previousDispatch);
       }
       previousDispatch = now;
+      if (event.type_ == BUTTON_CHANGE) {
+        StreamingPerfScope::Record(streamingPerf.inputQueueWait,
+                                   now - event.queuedCycles_);
+      }
       StreamingPerfScope perf(streamingPerf.uiDispatch);
       advGUIWindowImp::ProcessEvent(event);
+      if (event.type_ == BUTTON_CHANGE) {
+        StreamingPerfScope::Record(streamingPerf.inputDispatchLatency,
+                                   DWT->CYCCNT - event.queuedCycles_);
+      }
     }
   }
 }
@@ -685,7 +693,11 @@ void advEventManager::ProcessSerialInputEvent(void *) {
 }
 
 void advEventManager::ProcessInputEvent(void *) {
+  uint32_t previousScan = DWT->CYCCNT;
   for (;;) {
+    const uint32_t scan = DWT->CYCCNT;
+    StreamingPerfScope::Record(streamingPerf.inputScanGap, scan - previousScan);
+    previousScan = scan;
     uint16_t newMask, sendMask;
 
     if (redrawing_)
@@ -736,7 +748,7 @@ void advEventManager::ProcessInputEvent(void *) {
     //    Trace::Debug("Input task running, stack free: %d\n",
     //                 uxTaskGetStackHighWaterMark(NULL));
     //    Trace::Debug("Tick count: %lu\n", xTaskGetTickCount());
-    vTaskDelay(pdMS_TO_TICKS(50)); // check input at 20Hz
+    vTaskDelay(pdMS_TO_TICKS(10)); // scan at 100 Hz, debounce/repeat above
     //    Trace::Debug("Inputs task");
   }
 }

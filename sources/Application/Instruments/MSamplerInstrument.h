@@ -81,6 +81,7 @@ private:
     float lastRight_ = 0.0f;
     uint8_t releaseSamples_ = 0;
     bool active_ = false;
+    bool starved_ = false;
   };
 
   static constexpr uint8_t ReleaseRampSamples = 32;
@@ -88,7 +89,13 @@ private:
 
   uint32_t findZone(uint8_t note, uint8_t velocity) const;
   bool queuePage(uint8_t channel, StreamPage &page);
-  bool readFrame(uint8_t channel, uint32_t frame, float &left, float &right);
+  struct SampleSpan {
+    const int16_t *data_ = nullptr;
+    uint32_t begin_ = 0;
+    uint32_t end_ = 0;
+  };
+  void servicePages(uint8_t channel, uint32_t frame);
+  SampleSpan findSpan(uint8_t channel, uint32_t frame) const;
   void clearState(ChannelState &state);
   void releaseArena();
 
