@@ -204,8 +204,8 @@ int advAudioDriver::GetVolume() {
   return requestedVolume.load(std::memory_order_acquire);
 };
 
-void advAudioDriver::CloseDriver() {
-  // Not really used, maybe for sleep?
+void advAudioDriver::CloseDriver(){
+    // Not really used, maybe for sleep?
 };
 
 bool advAudioDriver::StartDriver() {

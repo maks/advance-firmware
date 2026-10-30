@@ -73,7 +73,7 @@ public:
                const char *nodeName = "INSTRUMENT",
                bool registerWithPersistence = false)
       : VariableContainer(list),
-        Persistent(nodeName, registerWithPersistence) {};
+        Persistent(nodeName, registerWithPersistence){};
   virtual ~I_Instrument();
 
   // Initialisation routine

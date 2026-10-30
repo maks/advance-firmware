@@ -59,7 +59,7 @@ public:
 
   virtual void ProcessButtonMask(unsigned short mask, bool pressed);
   virtual void DrawView();
-  virtual void OnPlayerUpdate(PlayerEventType, unsigned int) {};
+  virtual void OnPlayerUpdate(PlayerEventType, unsigned int){};
   virtual void OnFocus();
   virtual void AnimationUpdate() override;
   void onInstrumentTypeChange(bool updateUI = false);

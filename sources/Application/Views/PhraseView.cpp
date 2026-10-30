@@ -102,7 +102,7 @@ PhraseView::PhraseView(GUIWindow &w, ViewData *viewData)
   };
 }
 
-PhraseView::~PhraseView() {};
+PhraseView::~PhraseView(){};
 
 void PhraseView::Reset() {
   phrase_ = &(viewData_->song_->phrase_);
