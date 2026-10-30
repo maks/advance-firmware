@@ -30,6 +30,20 @@ struct SamplePoolEvent : public I_ObservableData {
   int index_;
 };
 
+enum class SampleConversionErrorCode : uint8_t {
+  None = 0,
+  InvalidSourcePath = 1,
+  InvalidSourceWav = 2,
+  InvalidOutputPath = 3,
+  OutputFileOpenFailed = 4,
+  OutputHeaderWriteFailed = 5,
+  ResamplerInitFailed = 6,
+  SourceReadFailed = 7,
+  OutputDataWriteFailed = 8,
+  ResamplingFailed = 9,
+  OutputHeaderFinalizeFailed = 10,
+};
+
 class SamplePool : public T_Factory<SamplePool>, public Observable {
 public:
   void Load(const char *projectName);
@@ -62,6 +76,10 @@ public:
   static constexpr int ImportDuplicateNameError = -2;
   // Returns the new sample index or one of above error codes
   int ImportSample(const char *name, const char *projectName);
+  // Convert a WAV using the project import settings without adding it to the
+  // resident sample pool. Used by streamed instruments that own their files.
+  bool ConvertSampleFile(const char *name, const char *outputPath,
+                         SampleConversionErrorCode &errorCode);
 
   int LoadProjectSample(const char *path);
   void PurgeSample(int i, const char *projectName);
@@ -96,6 +114,9 @@ protected:
   const char *importName;
 
 private:
+  int importSample(const char *name, const char *projectName,
+                   const char *outputPath,
+                   SampleConversionErrorCode *errorCode = nullptr);
   etl::vector<I_Observer *, MAX_SAMPLEINSTRUMENT_COUNT> observers_;
 };
 

@@ -13,8 +13,10 @@
 
 #include "InstrumentImportView.h"
 #include "Application/Instruments/AdvanceFM6/FM6Dx7Patch.h"
+#include "Application/Instruments/DecentSamplerPreset.h"
 #include "Application/Instruments/FM6Instrument.h"
 #include "Application/Instruments/I_Instrument.h"
+#include "Application/Instruments/SamplePool.h"
 #include "Application/Persistency/PersistencyService.h"
 #include "Application/Player/Player.h"
 #include "Application/Views/BaseClasses/BrowserEntrySort.h"
@@ -28,12 +30,41 @@
 #include <cstring>
 #include <memory>
 #include <nanoprintf.h>
+#include <strings.h>
+#include <tinyxml2.h>
 
 #define LIST_WIDTH (SCREEN_WIDTH - 2)
 // -4 to allow for title, filesize & spacers
 #define LIST_PAGE_SIZE (SCREEN_HEIGHT - 4)
 
 namespace {
+
+template <size_t Capacity>
+etl::string<Capacity> makeBoundedInstrumentName(const char *name) {
+  etl::string<Capacity> boundedName;
+  if (name == nullptr) {
+    return boundedName;
+  }
+
+  const size_t nameLength = std::strlen(name);
+  if (nameLength <= boundedName.capacity()) {
+    boundedName = name;
+    return boundedName;
+  }
+
+  constexpr const char *extension = ".dspreset";
+  constexpr size_t extensionLength = sizeof(".dspreset") - 1;
+  if (nameLength > extensionLength &&
+      strcasecmp(name + nameLength - extensionLength, extension) == 0 &&
+      boundedName.capacity() > extensionLength) {
+    boundedName.assign(name, boundedName.capacity() - extensionLength);
+    boundedName.append(extension);
+    return boundedName;
+  }
+
+  boundedName.assign(name, boundedName.capacity());
+  return boundedName;
+}
 
 bool extractLeafName(const char *path,
                      etl::string<MAX_INSTRUMENT_FILENAME_LENGTH> &leafName) {
@@ -43,8 +74,9 @@ bool extractLeafName(const char *path,
     return false;
   }
 
-  leafName = baseName.c_str();
-  return !leafName.is_truncated() && !leafName.empty();
+  leafName = makeBoundedInstrumentName<MAX_INSTRUMENT_FILENAME_LENGTH>(
+      baseName.c_str());
+  return !leafName.empty();
 }
 
 const FileSystemEntry *
@@ -84,6 +116,236 @@ static etl::array<uint8_t, fm6::Dx7BankSysexSize> stagedSysex
 #undef DX7_STAGING_ATTRIBUTES
 
 constexpr const char *kSysexBackName = "Back";
+
+#if defined(HOST_TEST)
+#define DS_IMPORT_ATTRIBUTES __attribute__((aligned(32)))
+#else
+#define DS_IMPORT_ATTRIBUTES                                                   \
+  __attribute__((section(".SDRAM1_NC"))) __attribute__((aligned(32)))
+#endif
+static DecentSamplerPreset importPreset DS_IMPORT_ATTRIBUTES;
+static FileSystemPath::PathString importedDecentSamplerPath;
+#undef DS_IMPORT_ATTRIBUTES
+
+void removeImportedPresetFiles(const char *directory, uint16_t zoneCount,
+                               bool removePreset) {
+  auto *fs = FileSystem::GetInstance();
+  FileSystemPath::PathString path;
+  if (removePreset) {
+    FileSystemPath::PathString folderLeaf;
+    char presetFileName[MAX_INSTRUMENT_FILENAME_LENGTH + 16]{};
+    if (FileSystemPath::BaseName(directory, folderLeaf)) {
+      npf_snprintf(presetFileName, sizeof(presetFileName), "%s.dspreset",
+                   folderLeaf.c_str());
+      if (FileSystemPath::JoinPath(directory, presetFileName, path)) {
+        fs->DeleteFile(path.c_str());
+      }
+    }
+  }
+  for (uint16_t i = 0; i < zoneCount; ++i) {
+    char fileName[20];
+    npf_snprintf(fileName, sizeof(fileName), "sample%03u.wav", i);
+    if (FileSystemPath::JoinPath(directory, fileName, path)) {
+      fs->DeleteFile(path.c_str());
+    }
+  }
+  fs->DeleteDir(directory);
+}
+
+void removeImportedPreset(const char *presetPath) {
+  FileSystemPath::PathString directory;
+  if (FileSystemPath::DirName(presetPath, directory)) {
+    removeImportedPresetFiles(directory.c_str(), DecentSamplerPreset::MaxZones,
+                              true);
+  }
+}
+
+bool buildImportedDecentSampler(const char *sourcePath, const char *projectName,
+                                FileSystemPath::PathString &importedPath,
+                                const char *&error,
+                                SampleConversionErrorCode &conversionError) {
+  conversionError = SampleConversionErrorCode::None;
+  error = "Could not read DecentSampler preset";
+  auto result = LoadDecentSamplerPreset(sourcePath, importPreset);
+  if (!result) {
+    error = result.message_;
+    return false;
+  }
+
+  FileSystemPath::PathString projectPath, instrumentsPath, baseName;
+  if (!FileSystemPath::JoinPath("/projects", projectName, projectPath) ||
+      !FileSystemPath::JoinPath(projectPath.c_str(), "instruments",
+                                instrumentsPath) ||
+      !FileSystemPath::BaseName(sourcePath, baseName)) {
+    error = "Project path is too long";
+    return false;
+  }
+  auto *fs = FileSystem::GetInstance();
+  if (!fs->makeDir(instrumentsPath.c_str(), true)) {
+    error = "Could not create project instruments folder";
+    return false;
+  }
+
+  char baseNameBuffer[MAX_INSTRUMENT_FILENAME_LENGTH + 1]{};
+  const char *extension = std::strrchr(baseName.c_str(), '.');
+  const size_t baseNameLength =
+      extension == nullptr ? baseName.size()
+                           : static_cast<size_t>(extension - baseName.c_str());
+  if (baseNameLength == 0) {
+    error = "Preset filename is invalid";
+    return false;
+  }
+  const size_t boundedBaseNameLength =
+      baseNameLength < MAX_INSTRUMENT_FILENAME_LENGTH
+          ? baseNameLength
+          : MAX_INSTRUMENT_FILENAME_LENGTH;
+  std::memcpy(baseNameBuffer, baseName.c_str(), boundedBaseNameLength);
+
+  FileSystemPath::PathString outputDirectory;
+  bool foundDirectory = false;
+  for (uint16_t suffix = 0; suffix < 1000; ++suffix) {
+    char suffixText[8]{};
+    if (suffix != 0) {
+      npf_snprintf(suffixText, sizeof(suffixText), "-%u", suffix);
+    }
+    const size_t suffixLength = std::strlen(suffixText);
+    const size_t folderBaseLength =
+        boundedBaseNameLength + suffixLength <= MAX_INSTRUMENT_FILENAME_LENGTH
+            ? boundedBaseNameLength
+            : MAX_INSTRUMENT_FILENAME_LENGTH - suffixLength;
+    etl::string<MAX_INSTRUMENT_FILENAME_LENGTH> folderName;
+    folderName.assign(baseNameBuffer, folderBaseLength);
+    folderName.append(suffixText);
+    if (folderName.is_truncated()) {
+      error = "Preset name is too long";
+      return false;
+    }
+    if (!FileSystemPath::JoinPath(instrumentsPath.c_str(), folderName.c_str(),
+                                  outputDirectory)) {
+      error = "Preset name is too long";
+      return false;
+    }
+    if (!fs->exists(outputDirectory.c_str())) {
+      foundDirectory = true;
+      break;
+    }
+  }
+  if (!foundDirectory || !fs->makeDir(outputDirectory.c_str(), false)) {
+    error = "Could not create preset folder";
+    return false;
+  }
+
+  SamplePool *pool = SamplePool::GetInstance();
+  for (uint16_t i = 0; i < importPreset.zoneCount_; ++i) {
+    bool alreadyConverted = false;
+    for (uint16_t previous = 0; previous < i; ++previous) {
+      if (std::strcmp(importPreset.zones_[i].path_,
+                      importPreset.zones_[previous].path_) == 0) {
+        alreadyConverted = true;
+        break;
+      }
+    }
+    if (alreadyConverted) {
+      continue;
+    }
+    char fileName[20];
+    npf_snprintf(fileName, sizeof(fileName), "sample%03u.wav", i);
+    FileSystemPath::PathString outputSamplePath;
+    if (!FileSystemPath::JoinPath(outputDirectory.c_str(), fileName,
+                                  outputSamplePath)) {
+      conversionError = SampleConversionErrorCode::InvalidOutputPath;
+    } else if (!FileSystemPath::IsAbsolutePath(importPreset.zones_[i].path_) ||
+               std::strlen(importPreset.zones_[i].path_) >= PFILENAME_SIZE) {
+      conversionError = SampleConversionErrorCode::InvalidSourcePath;
+    } else if (!pool->ConvertSampleFile(importPreset.zones_[i].path_,
+                                        outputSamplePath.c_str(),
+                                        conversionError)) {
+      // The converter sets the specific failure code.
+    }
+    if (conversionError != SampleConversionErrorCode::None) {
+      error = nullptr;
+      removeImportedPresetFiles(outputDirectory.c_str(), i + 1, false);
+      return false;
+    }
+  }
+
+  FileSystemPath::PathString folderLeaf;
+  char presetFileName[MAX_INSTRUMENT_FILENAME_LENGTH + 16]{};
+  if (!FileSystemPath::BaseName(outputDirectory.c_str(), folderLeaf)) {
+    error = "Preset path is too long";
+    removeImportedPresetFiles(outputDirectory.c_str(), importPreset.zoneCount_,
+                              false);
+    return false;
+  }
+  npf_snprintf(presetFileName, sizeof(presetFileName), "%s.dspreset",
+               folderLeaf.c_str());
+  importedPath.clear();
+  if (!FileSystemPath::JoinPath(outputDirectory.c_str(), presetFileName,
+                                importedPath)) {
+    error = "Preset path is too long";
+    removeImportedPresetFiles(outputDirectory.c_str(), importPreset.zoneCount_,
+                              false);
+    return false;
+  }
+  auto output = fs->Open(importedPath.c_str(), "w");
+  if (!output) {
+    error = "Could not save imported preset";
+    removeImportedPresetFiles(outputDirectory.c_str(), importPreset.zoneCount_,
+                              false);
+    return false;
+  }
+
+  tinyxml2::XMLPrinter printer(output.get());
+  printer.OpenElement("DecentSampler");
+  printer.OpenElement("groups");
+  printer.OpenElement("group");
+  for (uint16_t i = 0; i < importPreset.zoneCount_; ++i) {
+    uint16_t fileIndex = i;
+    for (uint16_t previous = 0; previous < i; ++previous) {
+      if (std::strcmp(importPreset.zones_[i].path_,
+                      importPreset.zones_[previous].path_) == 0) {
+        fileIndex = previous;
+        break;
+      }
+    }
+    char fileName[20];
+    npf_snprintf(fileName, sizeof(fileName), "sample%03u.wav", fileIndex);
+    printer.OpenElement("sample");
+    printer.PushAttribute("path", fileName);
+    printer.PushAttribute("rootNote", importPreset.zones_[i].rootNote_);
+    printer.PushAttribute("loNote", importPreset.zones_[i].lowNote_);
+    printer.PushAttribute("hiNote", importPreset.zones_[i].highNote_);
+    printer.PushAttribute("loVel", importPreset.zones_[i].lowVelocity_);
+    printer.PushAttribute("hiVel", importPreset.zones_[i].highVelocity_);
+    const uint32_t sampleRate = importPreset.zones_[i].sampleRate_;
+    const uint64_t convertedStart =
+        static_cast<uint64_t>(importPreset.zones_[i].startFrame_) * 44100U /
+        sampleRate;
+    if (convertedStart != 0) {
+      printer.PushAttribute("start", convertedStart);
+    }
+    if (importPreset.zones_[i].endFrame_ != 0) {
+      const uint64_t convertedEnd =
+          (static_cast<uint64_t>(importPreset.zones_[i].endFrame_) * 44100U +
+           sampleRate - 1U) /
+          sampleRate;
+      printer.PushAttribute("end", convertedEnd - 1);
+    }
+    printer.CloseElement();
+  }
+  printer.CloseElement();
+  printer.CloseElement();
+  printer.CloseElement();
+  output.reset();
+  if (fs->exists(importedPath.c_str()) &&
+      LoadDecentSamplerPreset(importedPath.c_str(), importPreset)) {
+    return true;
+  }
+  error = "Could not write imported preset";
+  removeImportedPresetFiles(outputDirectory.c_str(),
+                            DecentSamplerPreset::MaxZones, true);
+  return false;
+}
 
 const uint8_t *stagedVoiceRecord(size_t patchIndex) {
   return stagedSysex.data() + fm6::Dx7BankHeaderSize +
@@ -344,21 +606,6 @@ void InstrumentImportView::importInstrument(const char *name) {
     return;
   }
 
-  if (leafName.size() > MAX_INSTRUMENT_FILENAME_LENGTH) {
-    Trace::Error("INSTRUMENTIMPORT: Instrument filename exceeds maximum "
-                 "length: %s (%zu > %d)",
-                 leafName.c_str(), leafName.size(),
-                 MAX_INSTRUMENT_FILENAME_LENGTH);
-
-    char sizeMesg[32];
-    npf_snprintf(sizeMesg, sizeof(sizeMesg), "Max is %d chars",
-                 MAX_INSTRUMENT_FILENAME_LENGTH);
-    MessageBox *mb =
-        MessageBox::Create(*this, "Filename too long", sizeMesg, MBBF_OK);
-    DoModal(mb);
-    return;
-  }
-
   InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
   assert(bank);
 
@@ -372,6 +619,31 @@ void InstrumentImportView::importInstrument(const char *name) {
         MessageBox::Create(*this, "Unknown instrument type", MBBF_OK);
     DoModal(mb);
     return;
+  }
+
+  const char *instrumentPath = name;
+  if (importedType == IT_MSAMPLER) {
+    char projectName[MAX_PROJECT_NAME_LENGTH + 1]{};
+    viewData_->project_->GetProjectName(projectName);
+    const char *error = nullptr;
+    SampleConversionErrorCode conversionError = SampleConversionErrorCode::None;
+    if (!buildImportedDecentSampler(name, projectName,
+                                    importedDecentSamplerPath, error,
+                                    conversionError)) {
+      char errorMessage[32];
+      if (conversionError != SampleConversionErrorCode::None) {
+        npf_snprintf(errorMessage, sizeof(errorMessage),
+                     "Sample import failed [%u]",
+                     static_cast<uint32_t>(conversionError));
+        error = errorMessage;
+      }
+      MessageBox *mb = MessageBox::Create(
+          *this, "DecentSampler import failed",
+          error == nullptr ? "Could not import preset" : error, MBBF_OK);
+      DoModal(mb);
+      return;
+    }
+    instrumentPath = importedDecentSamplerPath.c_str();
   }
 
   Trace::Log("INSTRUMENTIMPORT", "Detected instrument type: %d", importedType);
@@ -398,6 +670,9 @@ void InstrumentImportView::importInstrument(const char *name) {
 
     if (bank->GetNextAndAssignID(importedType, toInstrID_) ==
         NO_MORE_INSTRUMENT) {
+      if (importedType == IT_MSAMPLER) {
+        removeImportedPreset(importedDecentSamplerPath.c_str());
+      }
       MessageBox *mb =
           MessageBox::Create(*this, "Failed to create instrument", MBBF_OK);
       DoModal(mb);
@@ -418,7 +693,8 @@ void InstrumentImportView::importInstrument(const char *name) {
 
   I_Instrument *instrument = bank->GetInstrument(toInstrID_);
   PersistencyResult result =
-      PersistencyService::GetInstance()->ImportInstrument(instrument, name);
+      PersistencyService::GetInstance()->ImportInstrument(instrument,
+                                                          instrumentPath);
 
   Trace::Log("INSTRUMENTIMPORT", "Imported TYPE: %d", instrument->GetType());
 
@@ -447,6 +723,9 @@ void InstrumentImportView::importInstrument(const char *name) {
                                       &InstrumentImportView::onImportSuccess>(
                 *this));
   } else {
+    if (importedType == IT_MSAMPLER) {
+      removeImportedPreset(importedDecentSamplerPath.c_str());
+    }
     MessageBox *mb = MessageBox::Create(*this, "Import failed", MBBF_OK);
     DoModal(mb);
   }

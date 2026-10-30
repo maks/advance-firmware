@@ -16,6 +16,7 @@ struct DecentSamplerZone {
   uint8_t lowVelocity_;
   uint8_t highVelocity_;
   uint8_t channelCount_;
+  uint32_t sampleRate_;
   uint32_t dataOffset_;
   uint32_t frameCount_;
   uint32_t startFrame_;
