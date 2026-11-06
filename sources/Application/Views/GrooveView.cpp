@@ -180,7 +180,7 @@ void GrooveView::DrawView() {
   for (int j = 0; j < 16; j++) {
     ((j / ALT_ROW_NUMBER) % 2) ? SetColor(CD_ACCENT) : SetColor(CD_ACCENTALT);
     hex2char(j, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     pos._y++;
   }
 
@@ -198,7 +198,7 @@ void GrooveView::DrawView() {
       strcpy(buffer, "--");
     };
     props.invert_ = (j == position_);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     pos._y++;
   }
 
@@ -214,7 +214,7 @@ void GrooveView::OnPlayerUpdate(PlayerEventType, unsigned int tick) {
 
   pos._x = anchor._x - 1;
   pos._y = anchor._y + lastPosition_;
-  DrawString(pos._x, pos._y, " ", props);
+  DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, " ", props);
 
   Groove *gr = Groove::GetInstance();
   // Get current channel
@@ -231,7 +231,7 @@ void GrooveView::OnPlayerUpdate(PlayerEventType, unsigned int tick) {
     pos._x = anchor._x - 1;
     pos._y = anchor._y + lastPosition_;
     SetColor(CD_ACCENT);
-    DrawString(pos._x, pos._y, ">", props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, ">", props);
     SetColor(CD_NORMAL);
   };
 

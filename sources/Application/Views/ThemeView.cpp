@@ -12,6 +12,7 @@
  */
 
 #include "ThemeView.h"
+#include "Adapters/adv/display/display.h"
 #include "Application/AppWindow.h"
 #include "Application/Model/Config.h"
 #include "Application/Persistency/PersistenceConstants.h"
@@ -19,10 +20,9 @@
 #include "Application/Views/ModalDialogs/TextInputModalView.h"
 #include "System/Console/Trace.h"
 #include "System/FileSystem/FileSystem.h"
+#include "UIFramework/BasicDatas/TextLayoutGaps.h"
 #include <Application/Model/ThemeConstants.h>
 #include <stdint.h>
-
-#define FONT_FIELD_LINE 3
 
 #define COLOR_LABEL_WIDTH 12
 #define COMPONENT_SPACING 3
@@ -185,19 +185,15 @@ void ThemeView::DrawView() {
 
   GUITextProperties props;
 
-  // bit of a hack needed for font change as going from "standard" to "bold"
-  // will leave behind partial characters due to different width of those string
-  // labels
-  DrawString(5, FONT_FIELD_LINE, "                            ", props);
-
   FieldView::Redraw();
 
   // just draw the RGB column headings directly:
   GUITextProperties headerProps;
-  DrawString(17, 6, "R  G  B", headerProps);
+  DrawRegionString(TEXT_REGION_BODY, 17, 5, "R  G  B", headerProps);
 
   SetColor(CD_INFO);
-  DrawString(0, 22, "(NAV+LEFT return to Device)", props);
+  DrawRegionString(TEXT_REGION_BODY, 0, 21, "(NAV+LEFT return to Device)",
+                   props);
 }
 
 void ThemeView::addSwatchField(ColorDefinition color, GUIPoint position) {
@@ -377,14 +373,6 @@ void ThemeView::Update(Observable &o, I_ObservableData *d) {
     themeNameVar_.SetString(exportThemeName_.c_str());
     return;
   }
-  // if font changes call redraw all fields
-  case FourCC::VarUIFont: {
-    // need to force redraw of entire screen to update for font change
-    ForceClear();
-    DrawView();
-    configDirty_ = true;
-    break;
-  }
   // Handle color variable changes
   case FourCC::VarBGColor:
   case FourCC::VarFGColor:
@@ -499,6 +487,10 @@ void ThemeView::exportThemeWithName(const char *themeName, bool overwrite) {
 void ThemeView::OnFocus() {
   setTitle(etl::string<23>("Theme Settings"));
 
+  // Screen entry already clears the framebuffer, including all layout gaps.
+  lastBackgroundColor_ =
+      Config::GetInstance()->FindVariable(FourCC::VarBGColor)->GetInt();
+
   // Refresh local field state from Config when returning from theme import.
   syncFieldsFromConfig();
   _forceRedraw = true;
@@ -537,12 +529,26 @@ void ThemeView::importTheme() {
 }
 void ThemeView::AnimationUpdate() {
   if (_forceRedraw) {
+    const uint32_t background =
+        Config::GetInstance()->FindVariable(FourCC::VarBGColor)->GetInt();
+    // Theme-only cosmetic refresh: fill margins after a background edit/reset.
+    // Keep text and graphics intact; rectangle routing updates overlay backing.
+    // This runs only during this view's requested redraw, not every UI frame.
+    if (background != lastBackgroundColor_) {
+      PaintTextLayoutGaps(
+          *display_text_layout(), display_graphics_layout(), DISPLAY_WIDTH,
+          DISPLAY_HEIGHT, [this](GraphicsRegion r) {
+            GUIRect rect(r.x, r.y, r.x + r.width, r.y + r.height);
+            DrawRect(rect, CD_BACKGROUND);
+          });
+      lastBackgroundColor_ = background;
+    }
     ForceClear();
     ((AppWindow &)w_).InvalidateTextCache();
     DrawView();
     _forceRedraw = false;
   }
   GUITextProperties props;
-  drawTitlebar(props);
+  drawTitlebar(TEXT_REGION_HEADER, props);
   drawPowerButtonUI(props);
 }

@@ -1,8 +1,15 @@
+/*
+ *
+ * Copyright (c) 2024 xiphonics, inc.
+ *
+ * This file is part of the picoTracker firmware
+ */
 // Just the RemoteUIProtocol header for now
 #include "RemoteUIProtocol.h"
 
 // Helper function for byte escaping.
-static uint16_t addByteEscaped(char *buffer, uint16_t bufferIndex, char byte) {
+static uint16_t addByteEscaped(char *buffer, uint16_t bufferIndex,
+                               uint8_t byte) {
   if (byte == REMOTE_UI_CMD_MARKER || byte == REMOTE_UI_ESC_CHAR) {
     buffer[bufferIndex++] = REMOTE_UI_ESC_CHAR;
     buffer[bufferIndex++] = byte ^ REMOTE_UI_ESC_XOR;
@@ -19,12 +26,6 @@ static uint16_t add16bitEscaped(char *buffer, uint16_t bufferIndex,
   bufferIndex =
       addByteEscaped(buffer, bufferIndex, (val >> 8) & 0xFF); // Add MSB
   return bufferIndex;
-}
-
-void remoteUIFontCommand(uint8_t uifontIndex, char *buffer) {
-  buffer[0] = REMOTE_UI_CMD_MARKER;
-  buffer[1] = SETFONT_CMD;
-  buffer[2] = uifontIndex + ASCII_SPACE_OFFSET;
 }
 
 void remoteUIDrawCharCommand(const char c, uint8_t x, uint8_t y, bool invert,
@@ -67,4 +68,40 @@ uint16_t remoteUISetColorCommand(unsigned short r, unsigned short g,
   bufferIndex = addByteEscaped(buffer, bufferIndex, g);
   bufferIndex = addByteEscaped(buffer, bufferIndex, b);
   return bufferIndex;
+}
+
+static uint16_t addBounds(char *buffer, uint16_t i, GraphicsRegion r) {
+  i = add16bitEscaped(buffer, i, r.x);
+  i = add16bitEscaped(buffer, i, r.y);
+  i = add16bitEscaped(buffer, i, r.width);
+  return add16bitEscaped(buffer, i, r.height);
+}
+
+uint16_t remoteUIGlyphCommand(uint8_t target, uint8_t font, uint8_t character,
+                              bool invert, uint16_t x, uint16_t y,
+                              GraphicsRegion clip, bool clipped, char *buffer) {
+  buffer[0] = REMOTE_UI_CMD_MARKER;
+  buffer[1] = clipped ? CLIPPED_GLYPH_CMD : GLYPH_CMD;
+  uint16_t i = addByteEscaped(buffer, 2, target);
+  i = addByteEscaped(buffer, i, font);
+  i = addByteEscaped(buffer, i, character);
+  i = addByteEscaped(buffer, i, invert ? 1 : 0);
+  i = add16bitEscaped(buffer, i, x);
+  i = add16bitEscaped(buffer, i, y);
+  return clipped ? addBounds(buffer, i, clip) : i;
+}
+
+uint16_t remoteUITargetRectCommand(uint8_t target, GraphicsRegion bounds,
+                                   char *buffer) {
+  buffer[0] = REMOTE_UI_CMD_MARKER;
+  buffer[1] = TARGET_RECT_CMD;
+  uint16_t i = addByteEscaped(buffer, 2, target);
+  return addBounds(buffer, i, bounds);
+}
+
+uint16_t remoteUIOverlayCommand(RemoteUICommand command, GraphicsRegion bounds,
+                                char *buffer) {
+  buffer[0] = REMOTE_UI_CMD_MARKER;
+  buffer[1] = command;
+  return command == OVERLAY_PUSH_CMD ? addBounds(buffer, 2, bounds) : 2;
 }

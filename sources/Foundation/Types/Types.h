@@ -230,7 +230,6 @@ struct FourCC {
     VarMidiInputDevice,
     VarMidiClockSync,
     VarRemoteUI,
-    VarUIFont,
 
     VarChannel1Volume,
     VarChannel2Volume,
@@ -450,6 +449,9 @@ struct FourCC {
     VarReverbModulationRate,
     VarReverbModulationDepth,
     VarReverbDiffuse,
+    VarAudioOutput,
+    // Keep new persisted IDs at the end so existing numeric IDs do not move.
+    VarLineInMixLevel,
   };
   ETL_DECLARE_ENUM_TYPE(FourCC, uint16_t)
   // Not all enums need reflection. Only cases where we need reflection is the
@@ -463,7 +465,6 @@ struct FourCC {
   ETL_ENUM_TYPE(VarMidiClockSync, "MIDICLOCKSYNC")
   ETL_ENUM_TYPE(VarRemoteUI, "REMOTEUI")
   ETL_ENUM_TYPE(VarInstrumentAudition, "INSTAUDITION")
-  ETL_ENUM_TYPE(VarUIFont, "UIFONT")
   ETL_ENUM_TYPE(VarThemeName, "THEMENAME")
   ETL_ENUM_TYPE(VarScaleRoot, "scaleroot")
   ETL_ENUM_TYPE(StarLoomInstrumentShape, "shape")
@@ -665,6 +666,8 @@ struct FourCC {
   ETL_ENUM_TYPE(VarRecordMicGain, "recordmicgain")
   ETL_ENUM_TYPE(VarOutputVolume, "outputvolume")
   ETL_ENUM_TYPE(VarImportResampler, "IMPORTRESAMP")
+  ETL_ENUM_TYPE(VarAudioOutput, "AUDIOOUTPUT")
+  ETL_ENUM_TYPE(VarLineInMixLevel, "lineinmix")
   ETL_ENUM_TYPE(VoiceOverdrive, "voice drive")
   ETL_ENUM_TYPE(VoiceBandpassCutoff, "voice base")
   ETL_ENUM_TYPE(VoiceBandpassResonance, "voice bw res")

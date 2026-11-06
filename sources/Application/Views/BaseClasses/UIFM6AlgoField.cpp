@@ -89,7 +89,8 @@ UIFM6AlgoField::UIFM6AlgoField(const GUIPoint &position,
 
 void UIFM6AlgoField::Draw(GUIWindow &w, int offset) {
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   const uint8_t algo = instrument_.GetAlgorithm();
@@ -107,7 +108,7 @@ void UIFM6AlgoField::Draw(GUIWindow &w, int offset) {
     props.invert_ = true;
     w.DrawString(buffer, position, props);
   } else {
-    DrawLabeledField(w, position, buffer);
+    DrawLabeledField(w, position, buffer, props);
   }
 
   // The cursor is drawn whether or not this field has focus: once focus

@@ -31,6 +31,15 @@
 
 class SampleEditorView : public FieldView, public I_Observer {
 public:
+  TextLayout GetTextLayout() const override {
+    static constexpr TextRegion regions[] = {
+        {8, 4, 704, 24, TEXT_FONT_SMALL},
+        {8, 30, 704, 690, TEXT_FONT_NORMAL},
+    };
+    return {regions, sizeof(regions) / sizeof(regions[0])};
+  }
+
+  GraphicsLayout GetGraphicsLayout() override;
   SampleEditorView(GUIWindow &w, ViewData *data);
   virtual ~SampleEditorView();
   void Reset();
@@ -91,7 +100,6 @@ private:
   bool applyTrimOperation(uint32_t startFrame, uint32_t endFrame);
   bool applyNormalizeOperation();
   void navigateToView(ViewType vt);
-  void clearWaveformRegion();
   void rebuildWaveform();
   void updateGraphMarkers();
   void updateZoomWindow();
@@ -148,8 +156,6 @@ private:
 
   enum SelectedMarker { MarkerStart = 0, MarkerEnd };
   SelectedMarker selectedMarker_ = MarkerStart;
-
-  uint8_t modalClearCount_ = 0;
 
   etl::string<PFILENAME_SIZE> workingFilename_;
   bool hasWorkingCopy_ = false;

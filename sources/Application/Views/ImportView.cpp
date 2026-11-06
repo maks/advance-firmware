@@ -16,6 +16,7 @@
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
 #include "Application/Instruments/SampleSourceInstrument.h"
+#include "Application/Instruments/WavHeader.h"
 #include "Application/Views/BaseClasses/BrowserEntrySort.h"
 #include "Application/Views/BaseClasses/BrowserPaging.h"
 #include "Application/Views/BaseClasses/BrowserPathUtils.h"
@@ -121,6 +122,27 @@ bool resolveEntryPath(const FileSystemPath::PathString &currentDir,
 bool isDirectoryListTruncated(FileSystem *fs) {
   return fs != nullptr &&
          fs->GetLastListDirectoryStatus() == DirectoryListStatus::Truncated;
+}
+
+etl::string<PFILENAME_SIZE>
+truncateMiddle(const etl::string<PFILENAME_SIZE> &name, const size_t maxWidth) {
+  constexpr const char *marker = "...";
+  constexpr size_t markerWidth = 3;
+
+  if (name.size() <= maxWidth) {
+    return name;
+  }
+  if (maxWidth <= markerWidth) {
+    return name.substr(0, maxWidth);
+  }
+
+  const size_t visibleNameWidth = maxWidth - markerWidth;
+  const size_t prefixWidth = (visibleNameWidth + 1) / 2;
+  const size_t suffixWidth = visibleNameWidth - prefixWidth;
+  etl::string<PFILENAME_SIZE> truncated = name.substr(0, prefixWidth);
+  truncated.append(marker);
+  truncated.append(name.substr(name.size() - suffixWidth).c_str());
+  return truncated;
 }
 
 void showDirectoryListTruncatedDialog(View &view) {
@@ -490,7 +512,6 @@ void ImportView::DrawView() {
   Clear();
 
   GUITextProperties props;
-  GUIPoint pos = GetTitlePosition();
 
   auto fs = FileSystem::GetInstance();
 
@@ -504,7 +525,7 @@ void ImportView::DrawView() {
 
   // Draw samples
   int x = 1;
-  int y = pos._y + 2;
+  int y = 1;
 
   uint32_t availableSpace =
       SamplePool::GetInstance()->GetAvailableSampleStorageSpace();
@@ -531,14 +552,22 @@ void ImportView::DrawView() {
               makeBoundedSampleName<MAX_INSTRUMENT_FILENAME_LENGTH>(
                   entry.name.c_str())) > -1) {
         SetColor(CD_ACCENT);
-        DrawString(x, y, "*", props);
+        DrawRegionString(TEXT_REGION_BODY, x, y, "*", props);
         SetColor(CD_NORMAL);
       } else if (isSingleCycle) {
         SetColor(CD_ACCENT);
-        DrawString(x, y, "~", props);
+        DrawRegionString(TEXT_REGION_BODY, x, y, "~", props);
         SetColor(CD_NORMAL);
       } else {
-        DrawString(x, y, " ", props);
+        DrawRegionString(TEXT_REGION_BODY, x, y, " ", props);
+      }
+
+      constexpr size_t wavExtensionLength = 4;
+      if (displayName.size() >= wavExtensionLength &&
+          strcasecmp(displayName.c_str() + displayName.size() -
+                         wavExtensionLength,
+                     ".wav") == 0) {
+        displayName.resize(displayName.size() - wavExtensionLength);
       }
     } else {
       SetColor(CD_ACCENT);
@@ -551,8 +580,10 @@ void ImportView::DrawView() {
       }
     }
 
-    // Truncate to fit display width
-    if (displayName.size() > LIST_WIDTH) {
+    // Keep both ends of long filenames visible in the sample list.
+    if (entry.type != PFT_DIR) {
+      displayName = truncateMiddle(displayName, LIST_WIDTH);
+    } else if (displayName.size() > LIST_WIDTH) {
       displayName.resize(LIST_WIDTH);
     }
 
@@ -560,12 +591,12 @@ void ImportView::DrawView() {
       SetColor(CD_HILITE2);
       props.invert_ = true;
     }
-    DrawString(x + 1, y, displayName.c_str(), props);
+    DrawRegionString(TEXT_REGION_BODY, x + 1, y, displayName.c_str(), props);
     y += 1;
   };
 
   SetColor(CD_HILITE1);
-  y = SCREEN_HEIGHT - 2;
+  y = SCREEN_HEIGHT - 3;
   if (inProjectSampleDir_) {
     if (selectedButton_ < 0 || selectedButton_ >= kProjectPoolButtonCount) {
       selectedButton_ = 0;
@@ -588,7 +619,7 @@ void ImportView::DrawView() {
       SetColor(CD_HILITE1);
       props.invert_ = false;
     }
-    DrawString(x, y, "Import", props);
+    DrawRegionString(TEXT_REGION_BODY, x, y, "Import", props);
     if (selectedButton_ == kImportButtonEdit) {
       SetColor(CD_HILITE2);
       props.invert_ = true;
@@ -596,7 +627,7 @@ void ImportView::DrawView() {
       SetColor(CD_HILITE1);
       props.invert_ = false;
     }
-    DrawString(x + 8, y, "Edit", props);
+    DrawRegionString(TEXT_REGION_BODY, x + 8, y, "Edit", props);
 
     if (selectedButton_ == kImportButtonRename) {
       SetColor(CD_HILITE2);
@@ -605,7 +636,7 @@ void ImportView::DrawView() {
       SetColor(CD_HILITE1);
       props.invert_ = false;
     }
-    DrawString(x + 16, y, "Rename", props);
+    DrawRegionString(TEXT_REGION_BODY, x + 16, y, "Rename", props);
 
     if (selectedButton_ == kImportButtonVolume) {
       SetColor(CD_HILITE2);
@@ -616,13 +647,13 @@ void ImportView::DrawView() {
     }
     char volField[12];
     npf_snprintf(volField, sizeof(volField), "Vol:%2d", previewVolume);
-    DrawString(x + 24, y, volField, props);
+    DrawRegionString(TEXT_REGION_BODY, x + 24, y, volField, props);
   } else {
     if (fileEntries_.empty()) {
       // draw this a few lines down from *top* of screen
       SetColor(CD_NORMAL);
       props.invert_ = false;
-      DrawString(2, 3, "[pool empty]", props);
+      DrawRegionString(TEXT_REGION_BODY, 2, 2, "[pool empty]", props);
     } else {
       // we make edit the first button to make things easier because remove is
       // only available for now on the Advance and even on Advance we dont want
@@ -634,7 +665,7 @@ void ImportView::DrawView() {
         SetColor(CD_HILITE1);
         props.invert_ = false;
       }
-      DrawString(x, y, "Edit", props);
+      DrawRegionString(TEXT_REGION_BODY, x, y, "Edit", props);
       if (selectedButton_ == 1) {
         SetColor(CD_HILITE2);
         props.invert_ = true;
@@ -642,7 +673,7 @@ void ImportView::DrawView() {
         SetColor(CD_HILITE1);
         props.invert_ = false;
       }
-      DrawString(x + 7, y, "Rename", props);
+      DrawRegionString(TEXT_REGION_BODY, x + 7, y, "Rename", props);
 
       if (selectedButton_ == kProjectButtonRemove) {
         SetColor(CD_HILITE2);
@@ -651,7 +682,7 @@ void ImportView::DrawView() {
         SetColor(CD_HILITE1);
         props.invert_ = false;
       }
-      DrawString(x + 16, y, "Remove", props);
+      DrawRegionString(TEXT_REGION_BODY, x + 16, y, "Remove", props);
 
       if (selectedButton_ == kProjectButtonVolume) {
         SetColor(CD_HILITE2);
@@ -662,7 +693,7 @@ void ImportView::DrawView() {
       }
       char volField[12];
       npf_snprintf(volField, sizeof(volField), "Vol:%2d", previewVolume);
-      DrawString(x + 24, y, volField, props);
+      DrawRegionString(TEXT_REGION_BODY, x + 24, y, volField, props);
     }
   }
   props.invert_ = false;
@@ -704,9 +735,9 @@ void ImportView::DrawView() {
   npf_snprintf(tempBuffer, sizeof(tempBuffer), "%s%*s", tempBuffer, padWidth,
                " ");
 
-  x = 1;  // align with rest screen title & file list
-  y = 23; // bottom line
-  DrawString(x, y, tempBuffer, props);
+  x = 1;                 // align with rest screen title & file list
+  y = SCREEN_HEIGHT - 2; // last row in the body text region
+  DrawRegionString(TEXT_REGION_BODY, x, y, tempBuffer, props);
 
   SetColor(CD_NORMAL);
 };
@@ -1165,6 +1196,26 @@ void ImportView::setCurrentFolder(FileSystem *fs, const char *name,
 
 void ImportView::showSampleEditor(etl::string<PFILENAME_SIZE> filename,
                                   bool isProjectSample) {
+  constexpr uint16_t pcmFormat = 0x0001;
+  auto file = FileSystem::GetInstance()->Open(filename.c_str(), "r");
+  auto headerResult = WavHeaderWriter::ReadHeader(file.get());
+  if (!headerResult.has_value()) {
+    MessageBox *mb = MessageBox::Create(*this, "Can't Edit Sample",
+                                        "Invalid WAV file", MBBF_OK);
+    DoModal(mb);
+    return;
+  }
+
+  const WavHeaderInfo &header = headerResult.value();
+  if (header.audioFormat != pcmFormat || header.numChannels == 0 ||
+      header.numChannels > 2 ||
+      (header.bitsPerSample != 8 && header.bitsPerSample != 16) ||
+      header.dataChunkSize == 0) {
+    MessageBox *mb = MessageBox::Create(*this, "Can't Edit Sample",
+                                        "Unsupported WAV format", MBBF_OK);
+    DoModal(mb);
+    return;
+  }
 
   viewData_->sampleEditorFilename = filename;
   viewData_->isShowingSampleEditorProjectPool = isProjectSample;

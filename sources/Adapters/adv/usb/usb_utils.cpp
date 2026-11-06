@@ -11,10 +11,12 @@
 #include "usb_utils.h"
 #include "Adapters/adv/system/advUsbRoleManager.h"
 #include "Adapters/adv/system/charger.h"
+#include "Adapters/adv/usb/usb_audio_handoff.h"
 #include "FreeRTOS.h"
 #include "Services/Midi/MidiService.h"
 #include "System/Console/Trace.h"
 #include "System/Profiler/DWTProfiler.h"
+#include "device/dcd.h"
 #include "host/hcd.h"
 #include "queue.h"
 #include "stm32h7xx.h"
@@ -356,7 +358,11 @@ void handleUSBInterrupts() {
   }
 
   if (tud_inited()) {
+    // Wait on TinyUSB's event queue, which wakes immediately from the USB
+    // interrupt. A separate tick delay can miss a one-ms isochronous deadline.
+    // The event budget still bounds each pass for MIDI and role maintenance.
     tud_task_ext(kUsbTaskTimeoutMs, false);
+    usbMasterAudioService();
     return;
   }
 
@@ -364,6 +370,9 @@ void handleUSBInterrupts() {
 }
 
 void resetUSBMidiSoftwareState() {
+  usbMasterAudioSetConfigured(0);
+  usbMasterAudioSetStreaming(0);
+  usbMasterAudioReset();
   taskENTER_CRITICAL();
   if (g_usbMidiTxQueue != nullptr) {
     xQueueReset(g_usbMidiTxQueue);
@@ -378,6 +387,43 @@ void resetUSBMidiSoftwareState() {
   g_usbMidiTxDropLogged = false;
   taskEXIT_CRITICAL();
 }
+
+extern "C" void tud_event_hook_cb(uint8_t rhport, uint32_t eventId,
+                                  bool inIsr) {
+  (void)rhport;
+  (void)inIsr;
+  // This hook may run in the interrupt. These operations only change atomic
+  // state; FIFO and queue resets remain owned by the USB task.
+  if (eventId == DCD_EVENT_BUS_RESET || eventId == DCD_EVENT_UNPLUGGED) {
+    usbMasterAudioSetConfigured(0);
+    usbMasterAudioSetStreaming(0);
+    usbMasterAudioSetSuspended(0);
+    usbMasterAudioReset();
+  } else if (eventId == DCD_EVENT_SUSPEND) {
+    usbMasterAudioSetSuspended(1);
+  } else if (eventId == DCD_EVENT_RESUME) {
+    // TinyUSB can skip the task callback while a connection is settling.
+    usbMasterAudioSetSuspended(0);
+  }
+}
+
+extern "C" void tud_mount_cb(void) {
+  usbMasterAudioSetSuspended(0);
+  usbMasterAudioSetConfigured(1);
+}
+
+extern "C" void tud_umount_cb(void) {
+  usbMasterAudioSetConfigured(0);
+  usbMasterAudioSetStreaming(0);
+  usbMasterAudioReset();
+}
+
+extern "C" void tud_suspend_cb(bool remoteWakeupEnabled) {
+  (void)remoteWakeupEnabled;
+  usbMasterAudioSetSuspended(1);
+}
+
+extern "C" void tud_resume_cb(void) { usbMasterAudioSetSuspended(0); }
 
 extern "C" void tuh_midi_mount_cb(uint8_t idx,
                                   const tuh_midi_mount_cb_t *mount_cb_data) {

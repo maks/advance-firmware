@@ -23,6 +23,18 @@ class InstrumentBank;
 
 class VoiceView : public FieldView {
 public:
+  TextLayout GetTextLayout() const override {
+    static constexpr TextRegion regions[] = {
+        {8, 4, 704, 24, TEXT_FONT_SMALL},
+        {8, 30, 692, 570, TEXT_FONT_NORMAL},
+        {8, 600, 80, 120, TEXT_FONT_SMALL},
+        {96, 600, 616, 120, TEXT_FONT_NORMAL},
+        {700, 90, 20, 480, TEXT_FONT_TINY},
+    };
+    return {regions, sizeof(regions) / sizeof(regions[0])};
+  }
+
+  GraphicsLayout GetGraphicsLayout() override;
   VoiceView(GUIWindow &w, ViewData *data);
   virtual ~VoiceView();
 

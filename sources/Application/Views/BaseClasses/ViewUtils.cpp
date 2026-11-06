@@ -1,3 +1,9 @@
+/*
+ *
+ * Copyright (c) 2024 xiphonics, inc.
+ *
+ * This file is part of the picoTracker firmware
+ */
 #include "ViewUtils.h"
 
 #include "Application/AppWindow.h"
@@ -7,8 +13,8 @@
 #define LABEL_COLOR CD_NORMAL
 #define VALUE_COLOR CD_EMPHASIS
 
-void DrawLabeledField(GUIWindow &w, GUIPoint position, char *buffer) {
-  GUITextProperties props;
+void DrawLabeledField(GUIWindow &w, GUIPoint position, char *buffer,
+                      const GUITextProperties &props) {
 
   char *colon = strchr(buffer, ':');
   if (colon) {

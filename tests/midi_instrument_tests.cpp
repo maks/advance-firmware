@@ -275,3 +275,57 @@ TEST_CASE("MidiInstrument IRT retains clean MIDI retrigger behavior") {
   }
   CHECK(GetQueuedMidiMessageCountForTest() == 0);
 }
+
+namespace {
+class FakeTimerService : public TimerService {
+public:
+  I_Timer *CreateTimer() override { return nullptr; }
+  void TriggerCallback(int msec, timerCallback cb) override {
+    lastMsec = msec;
+    lastCallback = cb;
+  }
+
+  int lastMsec = 0;
+  timerCallback lastCallback = nullptr;
+};
+
+struct TimerServiceScope {
+  FakeTimerService service;
+
+  TimerServiceScope() { TimerService::Install(&service); }
+  ~TimerServiceScope() { TimerService::Install(nullptr); }
+};
+} // namespace
+
+TEST_CASE("MidiInstrument SendProgramChangeWithNote sends PC, NoteOn, and scheduled NoteOff") {
+  MidiServiceScope midiScope;
+  TimerServiceScope timerScope;
+  MidiInstrument instrument;
+
+  REQUIRE(instrument.Init());
+  ClearQueuedMidiMessagesForTest();
+
+  instrument.SendProgramChangeWithNote(3, 42);
+
+  REQUIRE(GetQueuedMidiMessageCountForTest() == 2);
+  const MidiMessage &pc = GetQueuedMidiMessageForTest(0);
+  CHECK(pc.status_ == (MidiMessage::MIDI_PROGRAM_CHANGE + 3));
+  CHECK(pc.data1_ == 42);
+
+  const MidiMessage &noteOn = GetQueuedMidiMessageForTest(1);
+  CHECK(noteOn.status_ == (MidiMessage::MIDI_NOTE_ON + 3));
+  CHECK(noteOn.data1_ == NOTE_C3);
+  CHECK(noteOn.data2_ == 0x64);
+
+  CHECK(timerScope.service.lastMsec == 300);
+  REQUIRE(timerScope.service.lastCallback != nullptr);
+
+  ClearQueuedMidiMessagesForTest();
+  timerScope.service.lastCallback();
+
+  REQUIRE(GetQueuedMidiMessageCountForTest() == 1);
+  const MidiMessage &noteOff = GetQueuedMidiMessageForTest(0);
+  CHECK(noteOff.status_ == (MidiMessage::MIDI_NOTE_OFF + 3));
+  CHECK(noteOff.data1_ == NOTE_C3);
+  CHECK(noteOff.data2_ == 0x00);
+}

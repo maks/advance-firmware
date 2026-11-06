@@ -59,7 +59,22 @@ extern "C" {
 #define CFG_TUD_MSC 0
 #define CFG_TUD_HID 0
 #define CFG_TUD_MIDI 1
+#define CFG_TUD_AUDIO 1
 #define CFG_TUD_VENDOR 0
+// Keep role switching and MIDI transmission responsive under continuous
+// traffic.
+#define CFG_TUD_TASK_MAX_EVENTS 32
+
+// UAC2 stereo, 16-bit PCM master output (USB IN).
+#define CFG_TUD_AUDIO_FUNC_1_DESC_LEN 118
+#define CFG_TUD_AUDIO_FUNC_1_N_AS_INT 1
+#define CFG_TUD_AUDIO_FUNC_1_CTRL_BUF_SZ 64
+#define CFG_TUD_AUDIO_ENABLE_EP_IN 1
+#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX 180
+#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SW_BUF_SZ 720
+// Flow control uses the full master handoff queue in the transmit callback.
+// TinyUSB sends the one small/large packet prepared for each USB interval.
+#define CFG_TUD_AUDIO_EP_IN_FLOW_CONTROL 0
 
 //--------------------------------------------------------------------
 // HOST CONFIGURATION

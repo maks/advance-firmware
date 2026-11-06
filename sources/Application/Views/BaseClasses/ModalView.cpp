@@ -31,11 +31,12 @@ void ModalView::EndModal(int returnCode) {
 void ModalView::Destroy() { delete this; }
 
 void ModalView::ClearTextRect(int x, int y, int w, int h) {
-  View::ClearTextRect(x + left_, y + top_, w, h);
+  GUIRect rect(x + left_, y + top_, x + left_ + w, y + top_ + h);
+  w_.ClearTextRect(rect);
 }
 void ModalView::DrawString(int x, int y, const char *txt,
                            const GUITextProperties &props) {
-  View::DrawString(x + left_, y + top_, txt, props);
+  w_.DrawString(txt, GUIPoint(x + left_, y + top_), props);
 };
 
 GUIPoint ModalView::GetAnchor() {
@@ -63,18 +64,27 @@ void ModalView::SetWindow(int width, int height) {
   if (top_ < 2) {
     top_ = 2;
   }
+  static_cast<AppWindow &>(w_).SetOverlayBounds(
+      {int16_t(8 + (left_ - 2) * 22), int16_t((top_ - 2) * 30),
+       int16_t((width + 4) * 22), int16_t((height + 4) * 30)});
   ClearTextRect(-1, -1, width + 2, height + 2);
 
   SetColor(CD_ACCENT);
   GUITextProperties props;
-  props.invert_ = true;
+  props.invert_ = false;
+  // Native FONT box-drawing glyphs. Keep the existing border cell bounds so
+  // overlay capture and restoration cover the same rectangle as before.
   char line[SCREEN_WIDTH + 1];
-  memset(line, ' ', SCREEN_WIDTH);
-  line[SCREEN_WIDTH] = '\0';
-  line[width + 4] = 0;
+  memset(line, 196, width + 4);
+  line[width + 4] = '\0';
+  line[0] = static_cast<char>(218);
+  line[width + 3] = static_cast<char>(191);
   DrawString(-2, -2, line, props);
+  line[0] = static_cast<char>(192);
+  line[width + 3] = static_cast<char>(217);
   DrawString(-2, height + 1, line, props);
-  line[1] = 0;
+  line[0] = static_cast<char>(179);
+  line[1] = '\0';
   for (int i = 0; i < height + 2; i++) {
     DrawString(-2, i - 1, line, props);
     DrawString(width + 1, i - 1, line, props);

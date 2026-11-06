@@ -546,6 +546,6 @@ void MidiInstrument::NoteOffCallback() {
     noteOff.status_ = MidiMessage::MIDI_NOTE_OFF + NoteOffInfo::current.channel;
     noteOff.data1_ = NoteOffInfo::current.note;
     noteOff.data2_ = 0x00;
-    svc_->QueueMessage(noteOff);
+    svc_->SendImmediate(noteOff);
   }
 };

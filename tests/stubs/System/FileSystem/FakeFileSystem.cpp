@@ -4,10 +4,6 @@
  * Copyright (c) 2026 xiphonics, inc.
  */
 
-/*
- * Test stub for host-only builds.
- */
-
 #include "System/FileSystem/FakeFileSystem.h"
 #include <algorithm>
 #include <cstring>

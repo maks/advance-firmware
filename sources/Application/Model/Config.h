@@ -21,6 +21,10 @@
 #include "Foundation/Variables/WatchedVariable.h"
 #include "System/Console/Trace.h"
 
+enum class AudioOutputMode : int { Analog = 0,
+                                   Usb = 1,
+                                   UsbAndAnalog = 2 };
+
 class Config : public T_Singleton<Config>, public VariableContainer {
 public:
   Config();
@@ -42,7 +46,7 @@ public:
   void ResetTheme();
 
 private:
-  etl::vector<Variable *, 27> variables_;
+  etl::vector<Variable *, 28> variables_;
   // Config variables (kept as members to avoid heap allocation)
   WatchedVariable background_;
   WatchedVariable foreground_;
@@ -64,10 +68,10 @@ private:
   WatchedVariable remoteUI_;
   WatchedVariable instrumentAudition_;
   WatchedVariable importResampler_;
-  WatchedVariable uiFont_;
   StringVariable<MAX_VARIABLE_STRING_LENGTH> themeName_;
   WatchedVariable backlightLevel_;
   WatchedVariable outputVolume_;
+  WatchedVariable audioOutput_;
   WatchedVariable recordSource_;
   WatchedVariable recordLineGain_;
   WatchedVariable recordMicGain_;

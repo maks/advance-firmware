@@ -12,7 +12,6 @@
  */
 
 #include "MidiService.h"
-#include "Adapters/adv/usb/usb_utils.h"
 #include "Application/Model/Config.h"
 #include "Application/Model/Project.h"
 #include "Application/Player/Player.h"

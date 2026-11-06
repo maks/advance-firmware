@@ -5,10 +5,6 @@
  * Copyright (c) 2024 xiphonics, inc.
  */
 
-/*
- * Test-local nanoprintf implementation for host-only builds.
- */
-
 #define NANOPRINTF_IMPLEMENTATION
 #define NANOPRINTF_USE_FIELD_WIDTH_FORMAT_SPECIFIERS 1
 #define NANOPRINTF_USE_LARGE_FORMAT_SPECIFIERS 1

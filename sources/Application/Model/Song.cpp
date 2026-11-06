@@ -177,9 +177,9 @@ void Song::SetMidiInputChannel(int songChannel, uint8_t midiChannel) {
     return;
   }
 
-  midiInputChannels_[songChannel] = midiChannel <= MIDI_INPUT_CHANNEL_COUNT
-                                        ? midiChannel
-                                        : MIDI_INPUT_CHANNEL_NONE;
+  midiInputChannels_[songChannel] =
+      midiChannel <= MIDI_INPUT_CHANNEL_COUNT ? midiChannel
+                                              : MIDI_INPUT_CHANNEL_NONE;
 }
 
 uint8_t Song::GetMidiInputChannel(int songChannel) const {
@@ -216,8 +216,9 @@ void Song::SetMidiDefaultProgram(int midiChannel, uint8_t program) {
     return;
   }
 
-  midiDefaultPrograms_[midiChannel] =
-      program <= MIDI_INPUT_MAX_PROGRAM ? program : MIDI_INPUT_DEFAULT_PROGRAM;
+  midiDefaultPrograms_[midiChannel] = program <= MIDI_INPUT_MAX_PROGRAM
+                                          ? program
+                                          : MIDI_INPUT_DEFAULT_PROGRAM;
 }
 
 uint8_t Song::GetMidiDefaultProgram(int midiChannel) const {
@@ -246,7 +247,8 @@ Song::InstrumentUsageMap Song::GetInstrumentUsage() const {
       continue;
     }
 
-    const uint8_t midiChannel = static_cast<uint8_t>(midiInputChannel - 1U);
+    const uint8_t midiChannel =
+        static_cast<uint8_t>(midiInputChannel - 1U);
     used[GetMidiDefaultInstrumentIndex(midiChannel)] = true;
   }
 

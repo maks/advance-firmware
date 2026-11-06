@@ -27,7 +27,8 @@ UIInsertAmountField::UIInsertAmountField(const GUIPoint &position,
 
 void UIInsertAmountField::Draw(GUIWindow &w, int offset) {
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   char buffer[MAX_FIELD_WIDTH + 1];
@@ -42,7 +43,7 @@ void UIInsertAmountField::Draw(GUIWindow &w, int offset) {
     props.invert_ = true;
     w.DrawString(buffer, position, props);
   } else {
-    DrawLabeledField(w, position, buffer);
+    DrawLabeledField(w, position, buffer, props);
   }
 }
 

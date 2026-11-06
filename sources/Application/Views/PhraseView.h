@@ -14,6 +14,7 @@
 #ifndef _PHRASE_VIEW_H_
 #define _PHRASE_VIEW_H_
 
+#include "BaseClasses/CommandHelpState.h"
 #include "BaseClasses/UIBigHexVarField.h"
 #include "ScreenView.h"
 #include "ViewData.h"
@@ -23,6 +24,9 @@ struct SelectionResampleRequest;
 class PhraseView : public ScreenView {
 
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   PhraseView(GUIWindow &w, ViewData *viewData);
   ~PhraseView();
   void Reset();
@@ -66,6 +70,8 @@ protected:
   bool getEffectiveInstrumentForRow(int row, uint8_t &instrumentId) const;
 
 private:
+  CommandHelpState commandHelp_;
+  void drawInstrumentInfo();
   enum class PhraseClipboardColumnType : uint8_t {
     Note,
     Instrument,

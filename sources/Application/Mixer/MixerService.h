@@ -22,6 +22,7 @@
 #include "Externals/etl/include/etl/string.h"
 #include "Foundation/Observable.h"
 #include "Foundation/T_Singleton.h"
+#include "LineInMixer.h"
 #include "MixBus.h"
 #include "Services/Audio/AudioMixer.h"
 #include "Services/Audio/AudioOut.h"
@@ -91,6 +92,9 @@ public:
   void ClearOutputEffectTails();
   void ClearOutputEffectTailsLocked();
 
+  // Peak level of the live line input added to the master output.
+  stereosample GetLineInLevels() const { return lineInMixer_.GetLevels(); }
+
   void Lock();
   void Unlock();
 
@@ -107,6 +111,7 @@ private:
 
   AudioOut *out_;
   MixBus master_;
+  LineInMixer lineInMixer_;
   MixBus bus_[MAX_BUS_COUNT];
   etl::optional<OutputEffectSlot> outputEffects_[OUTPUT_EFFECT_COUNT];
   ChannelOutputRouting channelRouting_[SONG_CHANNEL_COUNT];

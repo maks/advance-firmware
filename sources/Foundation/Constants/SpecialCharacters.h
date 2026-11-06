@@ -9,7 +9,6 @@
  */
 
 #pragma once
-
 // Keep glyphs as string literals so they can be concatenated at compile time.
 // Use GLYPH(...) when a single-byte character value is needed instead.
 

@@ -93,6 +93,14 @@ int displayIndexFromInstrumentType(InstrumentType type) {
   return kInstrumentTypeToDisplayIndex[type];
 }
 
+GraphicsLayout InstrumentView::GetGraphicsLayout() {
+  static constexpr GraphicsRegion regions[] = {
+      {EmbeddedSlicerGraphXOffset, EmbeddedSlicerGraphYOffset, 660, 180}};
+  if (!isEmbeddedSlicerActive())
+    return {nullptr, 0};
+  return {regions, 1};
+}
+
 InstrumentView::InstrumentView(GUIWindow &w, ViewData *data)
     : FieldView(w, data), lastFocusWasSliceGraph_(false),
       instrumentType_(FourCC::VarInstrumentType, InstrumentTypeDisplayNames,
@@ -102,11 +110,11 @@ InstrumentView::InstrumentView(GUIWindow &w, ViewData *data)
       previewInstrument_(0), fm6Selection_(1),
       embeddedSlicer_(
           {GUIPoint(EmbeddedSlicerGraphXOffset, EmbeddedSlicerGraphYOffset),
-           GUIPoint(1, 12), false, false, false, true}) {
+           GUIPoint(1, 11), false, false, false, true}) {
   project_ = data->project_;
   embeddedSlicer_.AddObserver(*this);
 
-  GUIPoint position = GUIPoint(5, 1);
+  GUIPoint position = GUIPoint(5, 0);
   typeIntVarField_.emplace_back(position, *&instrumentType_, "Type: %s", 0,
                                 kMaxStandardInstrumentTypeIndex, 1, 1);
   fieldList_.insert(fieldList_.end(), &(*typeIntVarField_.rbegin()));
@@ -119,13 +127,13 @@ InstrumentView::InstrumentView(GUIWindow &w, ViewData *data)
   if (instr) {
     // NONE dont have a name field
     if (instr->GetType() != IT_NONE) {
-      position._y = 3;
+      position._y = 2;
       addNameTextField(instr, position);
     }
   }
 
   // add ui action fields for exporting and importing instrument settings
-  position._y = 2;
+  position._y = 1;
 
   persistentActionField_.emplace_back("Import", FourCC::ActionImport, position);
   fieldList_.insert(fieldList_.end(), &(*persistentActionField_.rbegin()));
@@ -265,7 +273,7 @@ void InstrumentView::onInstrumentTypeChange(bool updateUI) {
       return;
     }
     if (old->GetType() == IT_SAMPLE_SOURCE) {
-      clearEmbeddedSlicerWaveform();
+      invalidateInstrumentText();
       embeddedSlicer_.Reset();
     }
     bank->releaseInstrument(viewData_->currentInstrumentID_);
@@ -403,7 +411,7 @@ void InstrumentView::refreshInstrumentFields() {
   InstrumentType currentType =
       getInstrument() ? getInstrument()->GetType() : IT_NONE;
   if (currentType != IT_SAMPLE_SOURCE) {
-    clearEmbeddedSlicerWaveform();
+    invalidateInstrumentText();
     embeddedSlicer_.Reset();
   }
 
@@ -651,12 +659,14 @@ void InstrumentView::fillSIDParameters() {
   Variable *table = instrument->FindVariable(FourCC::SIDInstrumentTable);
   intVarOffField_.emplace_back(GUIPoint(labelX, tableY), *table, "Table: %2.2X",
                                0x00, TABLE_COUNT - 1, 1, 0x10);
+  intVarOffField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &intVarOffField_.back());
 
   Variable *automation =
       instrument->FindVariable(FourCC::SIDInstrumentTableAutomation);
   intVarField_.emplace_back(GUIPoint(labelX + 13, tableY), *automation,
                             "Auto: %s", 0, 1, 1, 1);
+  intVarField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &intVarField_.back());
 }
 
@@ -775,23 +785,27 @@ void InstrumentView::fillSampleParameters() {
   v = instrument->FindVariable(FourCC::SampleInstrumentLoopStart);
   bigHexVarField_.emplace_back(position, *v, 7, "Loop Start: %7.7X", 0,
                                instrument->GetSampleSize() - 1, 16);
+  bigHexVarField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &(*bigHexVarField_.rbegin()));
 
   position._y += 1;
   v = instrument->FindVariable(FourCC::SampleInstrumentEnd);
   bigHexVarField_.emplace_back(position, *v, 7, "Loop End: %7.7X", 0,
                                instrument->GetSampleSize() - 1, 16);
+  bigHexVarField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &(*bigHexVarField_.rbegin()));
 
   position._y += 1;
   v = instrument->FindVariable(FourCC::SampleInstrumentTable);
   intVarOffField_.emplace_back(position, *v, "Table: %2.2X", 0x00,
                                TABLE_COUNT - 1, 1, 0x10);
+  intVarOffField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &(*intVarOffField_.rbegin()));
 
   v = instrument->FindVariable(FourCC::SampleInstrumentTableAutomation);
   position._x += 12;
   intVarField_.emplace_back(position, *v, "Auto: %s", 0, 1, 1, 1);
+  intVarField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &(*intVarField_.rbegin()));
 };
 
@@ -817,11 +831,10 @@ void InstrumentView::fillSampleSourceParameters() {
   fieldList_.insert(fieldList_.end(), &sampleIndexField_.back());
 
   setupEmbeddedSlicer();
-  embeddedSlicer_.MarkModalRecovery(2);
   ((AppWindow &)w_).SetDirty();
   addEmbeddedSlicerFields(position);
 
-  GUIPoint leftColumn(1, 14);
+  GUIPoint leftColumn(1, 13);
   GUIPoint rightColumn = leftColumn;
   rightColumn._x = 17;
 
@@ -874,12 +887,10 @@ void InstrumentView::fillSampleSourceParameters() {
   fieldList_.insert(fieldList_.end(), &(*bigHexVarField_.rbegin()));
 }
 
-void InstrumentView::clearEmbeddedSlicerWaveform() {
+void InstrumentView::invalidateInstrumentText() {
   // The slicer may still refer to an instrument that was released while this
   // view was unfocused (for example, Remove Unused Instruments).  Do not query
   // that pointer here.
-  embeddedSlicer_.MarkModalRecovery(0);
-  embeddedSlicer_.ClearWaveformRegion(*this);
   ((AppWindow &)w_).InvalidateTextCache();
   ((AppWindow &)w_).SetDirty();
 }
@@ -979,7 +990,7 @@ void InstrumentView::stopInstrumentPreview() {
 }
 
 void InstrumentView::drawEmbeddedSlicerWaveform() {
-  if (!isEmbeddedSlicerActive() || HasModalView()) {
+  if (!isEmbeddedSlicerActive()) {
     return;
   }
   uint32_t sample = 0;
@@ -992,7 +1003,6 @@ void InstrumentView::drawEmbeddedSlicerWaveform() {
 
 void InstrumentView::AutoSliceConfirmCallback(View &view, ModalView &dialog) {
   auto &self = static_cast<InstrumentView &>(view);
-  self.embeddedSlicer_.MarkModalRecovery(2);
   self.isDirty_ = true;
   ((AppWindow &)self.w_).SetDirty();
   if (dialog.GetReturnCode() != MBL_YES) {
@@ -1129,10 +1139,6 @@ bool InstrumentView::requestSampleChange(int32_t newSampleIndex) {
 
   pendingSampleChangeInstrument_ = instrument;
   pendingSampleChangeNewIndex_ = newSampleIndex;
-  if (instrument->GetType() == IT_SAMPLE_SOURCE) {
-    embeddedSlicer_.MarkModalRecovery(0);
-    embeddedSlicer_.ClearWaveformRegion(*this);
-  }
 
   MessageBox *message = MessageBox::Create(*this, "Change sample &",
                                            "reset edits?", MBBF_YES | MBBF_NO);
@@ -1283,9 +1289,9 @@ void InstrumentView::fillStarLoomParameters() {
   addSectionHeader(labelX, voiceHeaderY, "Voices");
   addOscillatorRow(voiceHeaderY + 1, "Shape:", shapeIDs, "%-8s", 0,
                    StarLoomInstrumentShapes::kAllowedShapeCount - 1, 1, 1);
-  addOscillatorRow(voiceHeaderY + 2, "Timbre:", timbreIDs, "%2.2X", 0, 0x7F, 1,
+  addOscillatorRow(voiceHeaderY + 2, "Timbre:", timbreIDs, "%2.2X", 0, 0xFF, 1,
                    0x10);
-  addOscillatorRow(voiceHeaderY + 3, "Color:", colorIDs, "%2.2X", 0, 0x7F, 1,
+  addOscillatorRow(voiceHeaderY + 3, "Color:", colorIDs, "%2.2X", 0, 0xFF, 1,
                    0x10);
   staticField_.emplace_back(GUIPoint(labelX, voiceHeaderY + 4), "Tune:");
   fieldList_.insert(fieldList_.end(), &staticField_.back());
@@ -1344,11 +1350,13 @@ void InstrumentView::fillFM6Parameters() {
   Variable *v = instrument->FindVariable(FourCC::FM6InstrumentTable);
   intVarOffField_.emplace_back(position, *v, "Table: %2.2X", 0x00,
                                TABLE_COUNT - 1, 1, 0x10);
+  intVarOffField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &(*intVarOffField_.rbegin()));
 
   position._x += 13;
   v = instrument->FindVariable(FourCC::FM6InstrumentTableAutomation);
   intVarField_.emplace_back(position, *v, "Auto: %s", 0, 1, 1, 1);
+  intVarField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
   fieldList_.insert(fieldList_.end(), &(*intVarField_.rbegin()));
 }
 
@@ -1533,9 +1541,8 @@ void InstrumentView::ProcessButtonMask(unsigned short mask, bool pressed) {
       if (instrumentModified) {
         MessageBox *mb = MessageBox::Create(*this, "Reset all settings?",
                                             MBBF_YES | MBBF_NO);
-        // The waveform is drawn directly into the framebuffer, so remove it
-        // before the dialog is drawn over it.
-        clearEmbeddedSlicerWaveform();
+        // Live overlay backing preserves the waveform and text while the
+        // dialog is open; opening it does not invalidate the base screen.
         pendingPurgeInstrument_ = instr;
         DoModal(mb,
                 ModalViewCallback::create<
@@ -1650,7 +1657,6 @@ void InstrumentView::ProcessButtonMask(unsigned short mask, bool pressed) {
         if (!samplelibExists) {
           MessageBox *mb =
               MessageBox::Create(*this, "Can't access the samplelib", MBBF_OK);
-          clearEmbeddedSlicerWaveform();
           DoModal(
               mb,
               ModalViewCallback::create<InstrumentView,
@@ -1824,20 +1830,8 @@ void InstrumentView::DrawView() {
   etl::to_string(viewData_->currentInstrumentID_, title, format, true);
   setTitle(title);
   // Draw fields
-  if (HasModalView()) {
-    if (GetFocus() == 0 && !fieldList_.empty()) {
-      SetFocus(*fieldList_.begin());
-    }
-    for (auto it = fieldList_.begin(); it != fieldList_.end(); ++it) {
-      if (embeddedSlicer_.HasGraphFocus(*it)) {
-        continue;
-      }
-      (*it)->Draw(w_);
-    }
-  } else {
-    FieldView::Redraw();
-    drawEmbeddedSlicerWaveform();
-  }
+  FieldView::Redraw();
+  drawEmbeddedSlicerWaveform();
   drawMap();
 
   I_Instrument *instr = getInstrument();
@@ -1848,7 +1842,7 @@ void InstrumentView::DrawView() {
 
 void InstrumentView::AnimationUpdate() {
   GUITextProperties props;
-  drawTitlebar(props);
+  drawTitlebar(TEXT_REGION_HEADER, props);
   drawPowerButtonUI(props);
   embeddedSlicer_.AnimationUpdate(*this);
   if (isDirty_) {
@@ -1948,9 +1942,6 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
       if (embeddedSlicer_.HasSlicesForPlayback()) {
         MessageBox *mb = MessageBox::Create(*this, "Replace current slices?",
                                             MBBF_YES | MBBF_NO);
-        embeddedSlicer_.MarkModalRecovery(0);
-        embeddedSlicer_.ClearWaveformRegion(*this);
-        ((AppWindow &)w_).InvalidateTextCache();
         DoModal(mb, ModalViewCallback::create<
                         &InstrumentView::AutoSliceConfirmCallback>());
       } else {
@@ -1984,10 +1975,6 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
         MessageBox *mb = MessageBox::Create(
             *this, "Change Instrument &", "lose settings?", MBBF_YES | MBBF_NO);
         pendingInstrumentType_ = proposedType;
-        if (isEmbeddedSlicerActive()) {
-          embeddedSlicer_.MarkModalRecovery(0);
-          embeddedSlicer_.ClearWaveformRegion(*this);
-        }
         DoModal(
             mb,
             ModalViewCallback::create<
@@ -2001,7 +1988,6 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
       }
     } else {
       MessageBox *mb = MessageBox::Create(*this, "Not while playing", MBBF_OK);
-      clearEmbeddedSlicerWaveform();
       DoModal(mb,
               ModalViewCallback::create<InstrumentView,
                                         &InstrumentView::onSimpleModalDismiss>(
@@ -2076,7 +2062,6 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
     if (sampleIndex < 0) {
       MessageBox *mb =
           MessageBox::Create(*this, "Assign a sample first", MBBF_OK);
-      clearEmbeddedSlicerWaveform();
       DoModal(mb,
               ModalViewCallback::create<InstrumentView,
                                         &InstrumentView::onSimpleModalDismiss>(
@@ -2089,12 +2074,8 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
     NotifyObservers(&ve);
   } break;
   case FourCC::MidiInstrumentProgram: {
-    // When program value changes, send a MIDI Program Change message during
-    // playback
-    if (!Player::GetInstance()->IsRunning()) {
-      break;
-    }
-
+    // Send program changes immediately, including while the sequencer is
+    // stopped, so the connected MIDI instrument can be auditioned.
     I_Instrument *instr = getInstrument();
     if (instr && instr->GetType() == IT_MIDI) {
       MidiInstrument *midiInstr = (MidiInstrument *)instr;
@@ -2109,8 +2090,15 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
         int channel = channelVar->GetInt();
         int program = programVar->GetInt();
 
-        // Send Program Change message
-        midiInstr->SendProgramChange(channel, program);
+        Config *config = Config::GetInstance();
+        Variable *auditionVar =
+            config ? config->FindVariable(FourCC::VarInstrumentAudition)
+                   : nullptr;
+        if (auditionVar && auditionVar->GetInt() == 1) {
+          midiInstr->SendProgramChangeWithNote(channel, program);
+        } else {
+          midiInstr->SendProgramChange(channel, program);
+        }
       }
     }
   } break;
@@ -2184,7 +2172,6 @@ void InstrumentView::handleInstrumentExport() {
     // Show error message if no name is set
     MessageBox *mb = MessageBox::Create(*this, "Please set a name",
                                         "before exporting", MBBF_OK);
-    clearEmbeddedSlicerWaveform();
     DoModal(mb,
             ModalViewCallback::create<InstrumentView,
                                       &InstrumentView::onSimpleModalDismiss>(
@@ -2196,14 +2183,13 @@ void InstrumentView::handleInstrumentExport() {
 
     if (result == PERSIST_EXISTS) {
       // File already exists, ask user if they want to override it
-      etl::string<strlen("Overwrite existing file: ")> confirmMsg =
+      etl::string<sizeof("Overwrite existing file: ") - 1> confirmMsg =
           "Overwrite existing file?";
       MessageBox *mb = MessageBox::Create(*this, confirmMsg.c_str(),
                                           name.c_str(), MBBF_YES | MBBF_NO);
 
       exportInstrument_ = instrument;
       exportName_ = name;
-      clearEmbeddedSlicerWaveform();
       DoModal(
           mb,
           ModalViewCallback::create<InstrumentView,
@@ -2211,7 +2197,7 @@ void InstrumentView::handleInstrumentExport() {
               *this));
     } else {
       // Create a message with the instrument name
-      etl::string<MAX_INSTRUMENT_NAME_LENGTH + strlen("Exported: ")>
+      etl::string<MAX_INSTRUMENT_NAME_LENGTH + sizeof("Exported: ") - 1>
           successMsg = "Exported: ";
       successMsg += name;
 
@@ -2220,7 +2206,6 @@ void InstrumentView::handleInstrumentExport() {
                                 : "Failed to export instrument";
       // Show export result message
       MessageBox *mb = MessageBox::Create(*this, message, MBBF_OK);
-      clearEmbeddedSlicerWaveform();
       DoModal(mb,
               ModalViewCallback::create<InstrumentView,
                                         &InstrumentView::onSimpleModalDismiss>(
@@ -2233,9 +2218,6 @@ void InstrumentView::onConfirmInstrumentTypeChange(View &, ModalView &dialog) {
   if (dialog.GetReturnCode() == MBL_YES) {
     applyProposedTypeChangeUI();
   }
-  if (isEmbeddedSlicerActive()) {
-    embeddedSlicer_.MarkModalRecovery(2);
-  }
   isDirty_ = true;
 }
 
@@ -2244,11 +2226,8 @@ void InstrumentView::onConfirmResetInstrument(View &, ModalView &dialog) {
   pendingPurgeInstrument_ = nullptr;
 
   if (dialog.GetReturnCode() != MBL_YES || !instr) {
-    // The waveform was cleared to make room for the dialog, so schedule its
-    // redraw even when the reset is declined.
-    if (isEmbeddedSlicerActive()) {
-      embeddedSlicer_.MarkModalRecovery(2);
-    }
+    // The live backing restores the waveform even when reset is declined.
+    // Refresh the remaining fields after the dialog closes.
     isDirty_ = true;
     return;
   }
@@ -2259,9 +2238,6 @@ void InstrumentView::onConfirmResetInstrument(View &, ModalView &dialog) {
   // A purge drops the sample, so the slicer must forget the waveform it
   // rendered for it and redraw the graph area empty.
   setupEmbeddedSlicer();
-  if (isEmbeddedSlicerActive()) {
-    embeddedSlicer_.MarkModalRecovery(2);
-  }
   isDirty_ = true;
 }
 
@@ -2298,15 +2274,11 @@ void InstrumentView::onConfirmSampleChange(View &, ModalView &dialog) {
     updateSliceCountLabel(sliceCountLabel_, instrument);
     if (instrument->GetType() == IT_SAMPLE_SOURCE) {
       setupEmbeddedSlicer();
-      embeddedSlicer_.MarkModalRecovery(2);
     }
     isDirty_ = true;
     return;
   }
 
-  if (instrument->GetType() == IT_SAMPLE_SOURCE) {
-    embeddedSlicer_.MarkModalRecovery(2);
-  }
   isDirty_ = true;
 }
 
@@ -2327,7 +2299,6 @@ void InstrumentView::onConfirmExportOverwrite(View &, ModalView &dialog) {
 
 void InstrumentView::onSimpleModalDismiss(View &, ModalView &) {
   if (isEmbeddedSlicerActive()) {
-    embeddedSlicer_.MarkModalRecovery(2);
     isDirty_ = true;
   }
 }

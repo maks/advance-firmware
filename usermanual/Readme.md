@@ -12,7 +12,6 @@ See ../LICENSING.md for the baseline and applicable license notices.
 -->
 
 # Picotracker Manual
-
 ## Development
 
 While developing and writing content for the manual, you can have a preview of the site by running:

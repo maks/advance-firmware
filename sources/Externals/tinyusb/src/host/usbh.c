@@ -8,32 +8,6 @@
  * Existing license grants and original notices are preserved. See LICENSING.md.
  */
 
-/*
- * The MIT License (MIT)
- *
- * Copyright (c) 2019 Ha Thach (tinyusb.org)
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- * This file is part of the TinyUSB stack.
- */
-
 #include "tusb_option.h"
 
 #if CFG_TUH_ENABLED
@@ -1875,7 +1849,7 @@ static bool enum_parse_configuration_desc(uint8_t dev_addr, tusb_desc_configurat
           uint8_t const itf_num = desc_itf->bInterfaceNumber+i;
 
           // Interface number must not be used already
-          TU_ASSERT(itf_num < CFG_TUH_INTERFACE_MAX);
+          TU_ASSERT( itf_num < CFG_TUH_INTERFACE_MAX );
           TU_ASSERT( TUSB_INDEX_INVALID_8 == dev->itf2drv[itf_num] );
           dev->itf2drv[itf_num] = drv_id;
         }
@@ -1896,11 +1870,9 @@ static bool enum_parse_configuration_desc(uint8_t dev_addr, tusb_desc_configurat
     if (driver_opened) {
       p_desc += drv_len;
     } else {
-      // If driver didn't claim the interface/group, only advance past this
-      // single interface so subsequent interfaces in the association/config
-      // (e.g. MIDI in a composite device) can be evaluated.
-      uint16_t const single_itf_len = tu_desc_get_interface_total_len(
-          desc_itf, 1, (uint16_t)(desc_end - p_desc));
+      // If driver didn't claim the interface/group, only advance past this single interface
+      // so subsequent interfaces in the association/config (e.g. MIDI in a composite device) can be evaluated.
+      uint16_t const single_itf_len = tu_desc_get_interface_total_len(desc_itf, 1, (uint16_t) (desc_end - p_desc));
       p_desc += (single_itf_len > 0) ? single_itf_len : drv_len;
     }
   }

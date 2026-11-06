@@ -33,9 +33,10 @@ void NullView::DrawView() {
 
   const FirmwareNumberString buildString = FormatFirmwareVersionNumber();
   GUIPoint pos;
-  pos._y = 22;
+  pos._y = 21;
   pos._x = (32 - buildString.size()) / 2;
-  DrawString(pos._x, pos._y, buildString.c_str(), props);
+  DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buildString.c_str(),
+                   props);
 };
 
 void NullView::OnPlayerUpdate(PlayerEventType, unsigned int tick){

@@ -30,11 +30,6 @@ const uint32_t DEFAULT_EMPHASIS = 0x787878;
 // const uint32_t DEFAULT_RESERVED3 = 0x777777;
 // const uint32_t DEFAULT_RESERVED4 = 0xFFFF00;
 
-// Font constants
-const int DEFAULT_UIFONT = 0x0;
-const int FONT_COUNT = 3;
-inline const char *FONT_NAMES[FONT_COUNT] = {"Regular", "Bold", "Wide"};
-
 inline const char *DEFAULT_THEME_NAME = "Default";
 } // namespace ThemeConstants
 

@@ -8,32 +8,6 @@
  * Existing license grants and original notices are preserved. See LICENSING.md.
  */
 
-/*
- * The MIT License (MIT)
- *
- * Copyright (c) 2019 Ha Thach (tinyusb.org)
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- * This file is part of the TinyUSB stack.
- */
-
 #include "tusb_option.h"
 
 #if (CFG_TUH_ENABLED && CFG_TUH_MIDI)
@@ -242,11 +216,9 @@ bool midih_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const *d
     TU_VERIFY(TUSB_CLASS_AUDIO == desc_itf->bInterfaceClass);
     TU_VERIFY(AUDIO_SUBCLASS_MIDI_STREAMING == desc_itf->bInterfaceSubClass);
 
-    // Verify there is no third interface within max_len (i.e. this is a pure
-    // AC+MIDI pair, not composite)
-    uint16_t const ms_len = tu_desc_get_interface_total_len(
-        desc_itf, 1, (uint16_t)(p_end - (const uint8_t *)desc_itf));
-    const uint8_t *after_ms = ((const uint8_t *)desc_itf) + ms_len;
+    // Verify there is no third interface within max_len (i.e. this is a pure AC+MIDI pair, not composite)
+    uint16_t const ms_len = tu_desc_get_interface_total_len(desc_itf, 1, (uint16_t)(p_end - (const uint8_t*)desc_itf));
+    const uint8_t *after_ms = ((const uint8_t*)desc_itf) + ms_len;
     if (after_ms < p_end && tu_desc_type(after_ms) == TUSB_DESC_INTERFACE) {
       // More interfaces exist in this association (e.g. Audio Streaming).
       // Reject opening from AC so that interfaces can be claimed individually.
@@ -305,18 +277,15 @@ bool midih_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const *d
         uint8_t num_cables = 1;
         const uint8_t *next_desc = tu_desc_next(p_desc);
         if (next_desc < p_end) {
-          const size_t remaining = (size_t)(p_end - next_desc);
+          const size_t remaining = (size_t) (p_end - next_desc);
           TU_VERIFY(remaining >= 2);
           if (tu_desc_type(next_desc) == TUSB_DESC_CS_ENDPOINT) {
             TU_VERIFY(remaining >= sizeof(midi_desc_cs_endpoint_t));
-            TU_VERIFY(tu_desc_len(next_desc) >=
-                      sizeof(midi_desc_cs_endpoint_t));
+            TU_VERIFY(tu_desc_len(next_desc) >= sizeof(midi_desc_cs_endpoint_t));
             TU_VERIFY(tu_desc_len(next_desc) <= remaining);
             p_desc = next_desc;
-            const midi_desc_cs_endpoint_t *p_csep =
-                (const midi_desc_cs_endpoint_t *)p_desc;
-            num_cables =
-                (p_csep->bNumEmbMIDIJack > 0) ? p_csep->bNumEmbMIDIJack : 1;
+            const midi_desc_cs_endpoint_t *p_csep = (const midi_desc_cs_endpoint_t *) p_desc;
+            num_cables = (p_csep->bNumEmbMIDIJack > 0) ? p_csep->bNumEmbMIDIJack : 1;
           }
         }
 

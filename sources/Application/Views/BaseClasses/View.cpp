@@ -12,7 +12,6 @@
  */
 
 #include "View.h"
-#include "Adapters/adv/usb/usb_utils.h"
 #include "Application/AppWindow.h"
 #include "Application/Player/PlayButtonBehavior.h"
 #include "Application/Player/Player.h"
@@ -81,7 +80,7 @@ View::View(GUIWindow &w, ViewData *viewData)
   modalView_ = 0;
   modalViewCallback_ = ModalViewCallback();
   // Initialize VU meter tracking variables
-  for (int i = 0; i < SONG_CHANNEL_COUNT + 1; i++) {
+  for (int i = 0; i < VU_METER_COUNT; i++) {
     prevLeftVU_[i] = 0;
     prevRightVU_[i] = 0;
   }
@@ -90,20 +89,20 @@ GUIPoint View::GetAnchor() {
   // Original code had a dynamic anchor point dending on song count, but
   // changing the song count didn't work anyway given that there are many places
   // where it was statically defined as 8. Other screens also don't fit with a
-  // dynamic anchor point
-  return GUIPoint(5, 3);
+  // dynamic anchor point. Coordinates are local to the body text region.
+  return GUIPoint(5, 2);
 }
 
 GUIPoint View::GetTitlePosition() { return GUIPoint(0, 0); };
 
 void View::setTitle(const etl::istring &title) { title_ = title; }
 
-void View::drawTitle() {
+void View::drawTitle(uint8_t region) {
   GUIPoint pos = GetTitlePosition();
   GUITextProperties props;
 
   SetColor(CD_NORMAL);
-  DrawString(pos._x, pos._y, title_.c_str(), props);
+  DrawRegionString(region, pos._x, pos._y, title_.c_str(), props);
 }
 
 bool View::Lock() {
@@ -121,10 +120,8 @@ void View::WaitForObject() {
 void View::Unlock() { locked_ = false; }
 
 void View::drawMap() {
-  GUIPoint anchor = GetAnchor();
-
-  int mapYOffset = View::songRowCount_;
-  GUIPoint pos(View::margin_, anchor._y + mapYOffset);
+  // Region-local cells: FONTSMALL is 16x24, so five rows occupy 120px.
+  GUIPoint pos(0, 0);
   GUITextProperties props;
   I_Instrument *currentInstrument = nullptr;
   if (viewData_ && viewData_->project_) {
@@ -142,90 +139,89 @@ void View::drawMap() {
   props.invert_ = false;
   // row1
   strcpy(buffer, "D    ");
-  DrawString(pos._x, pos._y, buffer, props);
+  DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, buffer, props);
   pos._y++;
   // row2
   strcpy(buffer, "P G  ");
-  DrawString(pos._x, pos._y, buffer, props);
+  DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, buffer, props);
   pos._y++;
   // row3
   strcpy(buffer, showVoiceOnMap ? "SCPIV" : "SCPI ");
-  DrawString(pos._x, pos._y, buffer, props);
+  DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, buffer, props);
   pos._y++;
   // row4
   strcpy(buffer, "M TT ");
-  DrawString(pos._x, pos._y, buffer, props);
+  DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, buffer, props);
   pos._y++;
   // row5
   strcpy(buffer, "X    ");
-  DrawString(pos._x, pos._y, buffer, props);
+  DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, buffer, props);
 
   // draw current screen on map
   SetColor(CD_HILITE2);
-  pos._y = anchor._y + mapYOffset;
+  pos._y = 0;
   switch (viewType_) {
   case VT_CHAIN:
     pos._x += 1;
     pos._y += 2;
-    DrawString(pos._x, pos._y, "C", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "C", props);
     break;
   case VT_PHRASE:
     pos._x += 2;
     pos._y += 2;
-    DrawString(pos._x, pos._y, "P", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "P", props);
     break;
   case VT_DEVICE:
-    DrawString(pos._x, pos._y, "D", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "D", props);
     break;
   case VT_PROJECT:
     pos._y += 1;
-    DrawString(pos._x, pos._y, "P", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "P", props);
     break;
   case VT_VOICE:
     if (showVoiceOnMap) {
       pos._x += 4;
       pos._y += 2;
-      DrawString(pos._x, pos._y, "V", props);
+      DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "V", props);
     }
     break;
   case VT_INSTRUMENT:
     pos._x += 3;
     pos._y += 2;
-    DrawString(pos._x, pos._y, "I", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "I", props);
     break;
   case VT_TABLE: // under phrase
     pos._x += 2;
     pos._y += 3;
-    DrawString(pos._x, pos._y, "T", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "T", props);
     break;
   case VT_TABLE2: // under instrument
     pos._x += 3;
     pos._y += 3;
-    DrawString(pos._x, pos._y, "T", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "T", props);
     break;
   case VT_GROOVE:
     pos._x += 2;
     pos._y += 1;
-    DrawString(pos._x, pos._y, "G", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "G", props);
     break;
   case VT_MIXER:
     pos._y += 3;
-    DrawString(pos._x, pos._y, "M", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "M", props);
     break;
   case VT_MASTER_EFFECTS:
     pos._y += 4;
-    DrawString(pos._x, pos._y, "X", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "X", props);
     break;
   default: // VT_SONG
     pos._y += 2;
-    DrawString(pos._x, pos._y, "S", props);
+    DrawRegionString(TEXT_REGION_MAP, pos._x, pos._y, "S", props);
   }
 }
 
 void View::drawNotes() {
-  GUIPoint anchor = GetAnchor();
-  int initialX = View::margin_ + 5;
-  int initialY = anchor._y + View::songRowCount_ + 2;
+  int initialX = View::margin_ + 1;
+  int initialY = 1;
   GUIPoint pos(initialX, initialY);
   GUITextProperties props;
 
@@ -247,34 +243,41 @@ void View::drawNotes() {
     if (showPlaybackVisualizer) {
       uint8_t sliceIndex = 0;
       if (player->GetPlayedSliceIndex(i, sliceIndex)) {
-        DrawString(pos._x, pos._y, "SL", props);
+        DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, "SL", props);
         pos._y++;
         char sliceBuffer[3];
         sliceBuffer[0] = static_cast<char>('0' + (sliceIndex / 10));
         sliceBuffer[1] = static_cast<char>('0' + (sliceIndex % 10));
         sliceBuffer[2] = '\0';
-        DrawString(pos._x, pos._y, sliceBuffer, props);
+        DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, sliceBuffer,
+                         props);
         pos._y++;
-        DrawString(pos._x, pos._y, player->GetPlayedInstrument(i),
-                   props); // draw instrument number
+        DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y,
+                         player->GetPlayedInstrument(i),
+                         props); // draw instrument number
       } else {
-        DrawString(pos._x, pos._y, player->GetPlayedNote(i),
-                   props); // row for the note values
+        DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y,
+                         player->GetPlayedNote(i),
+                         props); // row for the note values
         pos._y++;
-        DrawString(pos._x, pos._y, player->GetPlayedOctive(i),
-                   props); // row for the octive values
+        DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y,
+                         player->GetPlayedOctive(i),
+                         props); // row for the octive values
         pos._y++;
-        DrawString(pos._x, pos._y, player->GetPlayedInstrument(i),
-                   props); // draw instrument number
+        DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y,
+                         player->GetPlayedInstrument(i),
+                         props); // draw instrument number
       }
     } else {
-      DrawString(pos._x, pos._y, "  ", props); // row for the note
-                                               // values
+      DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, "  ",
+                       props); // row for the note
+                               // values
       pos._y++;
-      DrawString(pos._x, pos._y, "  ",
-                 props); // row for the octive values
+      DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, "  ",
+                       props); // row for the octive values
       pos._y++;
-      DrawString(pos._x, pos._y, "  ", props); // draw instrument number
+      DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, "  ",
+                       props); // draw instrument number
     }
     pos._y = initialY;
     pos._x += 3;
@@ -283,7 +286,7 @@ void View::drawNotes() {
 
 void View::drawMasterVuMeter(Player *player, GUITextProperties props,
                              bool forceRedraw, uint8_t xoffset,
-                             uint8_t meterHeight) {
+                             uint8_t meterHeight, bool useMeterRegion) {
   stereosample playerLevel = player->GetMasterLevel();
 
   // Convert amplitude to bar levels
@@ -295,18 +298,33 @@ void View::drawMasterVuMeter(Player *player, GUITextProperties props,
   pos._x += xoffset;
   pos._y += meterHeight - 1; // -1 to align with song grid
 
+  // Map screens reserve a dedicated two-channel region. Other layouts, such
+  // as Record, retain the normal-font meter in their body region. Mixer also
+  // explicitly keeps its master meter alongside the channel strips.
+  uint8_t region = TEXT_REGION_BODY;
+  const TextRegionInfo *vu =
+      static_cast<AppWindow &>(w_).GetTextRegion(TEXT_REGION_VU);
+  if (useMeterRegion && vu && vu->definition.font == TEXT_FONT_TINY) {
+    region = TEXT_REGION_VU;
+    meterHeight = vu->rows;
+    pos = GUIPoint(0, meterHeight - 1);
+  }
   // Use index 0 for the master VU meter
-  drawVUMeter(leftBars, rightBars, pos, props, 0, forceRedraw, meterHeight);
+  drawVUMeter(leftBars, rightBars, pos, props, 0, forceRedraw, meterHeight,
+              region);
 }
 
 void View::drawVUMeter(int32_t leftBars, int32_t rightBars, GUIPoint pos,
                        GUITextProperties props, int vuIndex, bool forceRedraw,
-                       uint8_t meterHeight) {
-  const int32_t localMeterMax = meterHeight * 10 - 1;
+                       uint8_t meterHeight, uint8_t region) {
+  // Half-height glyphs double the bar units while preserving physical motion
+  // and the height of the clipping band.
+  const int stepScale = region == TEXT_REGION_VU ? 2 : 1;
+  const int32_t localMeterMax = meterHeight * 10 - stepScale;
   const int32_t coloredRows = std::max<int32_t>(
       2, (7 * meterHeight + (VU_METER_HEIGHT / 2)) / VU_METER_HEIGHT);
   const int32_t warnLevel = meterHeight - coloredRows - 1;
-  const int32_t clipLevel = meterHeight - 1;
+  const int32_t clipLevel = meterHeight - stepScale;
 
   leftBars = (leftBars * localMeterMax) / VU_METER_MAX;
   rightBars = (rightBars * localMeterMax) / VU_METER_MAX;
@@ -317,8 +335,10 @@ void View::drawVUMeter(int32_t leftBars, int32_t rightBars, GUIPoint pos,
 
   // Add inertia effect by limiting the rate of change
   // Maximum step change allowed per update
-  const int maxStepChange = 20;
-  const int fallStepChange = 10;
+  // Half-height glyphs need twice as many bar steps for the same physical
+  // movement. Keep the existing response of ordinary mixer channel meters.
+  const int maxStepChange = 20 * stepScale;
+  const int fallStepChange = 10 * stepScale;
 
   // For rising levels (current > previous), allow faster response
   if (leftBars > prevLeftVU_[vuIndex]) {
@@ -358,7 +378,7 @@ void View::drawVUMeter(int32_t leftBars, int32_t rightBars, GUIPoint pos,
 
     for (int i = 0; i < meterHeight; i++) {
       // Set appropriate color based on level
-      if (i == clipLevel) {
+      if (i >= clipLevel) {
         SetColor(CD_ERROR);
       } else if (i > warnLevel) {
         SetColor(CD_WARN);
@@ -367,15 +387,15 @@ void View::drawVUMeter(int32_t leftBars, int32_t rightBars, GUIPoint pos,
       }
 
       // draw left channel if changed
-      if (leftChanged) {
-        DrawString(pos._x, pos._y - i, char_bargraph_s(leftBars - 10 * i),
-                   props);
+      if (forceRedraw || leftChanged) {
+        DrawRegionString(region, pos._x, pos._y - i,
+                         char_bargraph_s(leftBars - 10 * i), props);
       }
 
       // draw right channel if changed
-      if (rightChanged) {
-        DrawString(pos._x + 1, pos._y - i, char_bargraph_s(rightBars - 10 * i),
-                   props);
+      if (forceRedraw || rightChanged) {
+        DrawRegionString(region, pos._x + 1, pos._y - i,
+                         char_bargraph_s(rightBars - 10 * i), props);
       }
     }
   }
@@ -386,10 +406,13 @@ void View::drawVUMeter(int32_t leftBars, int32_t rightBars, GUIPoint pos,
 }
 
 void View::DoModal(ModalView *view, ModalViewCallback cb) {
+  if (modalView_)
+    static_cast<AppWindow &>(w_).CloseModalOverlay();
   modalView_ = view;
   modalView_->OnFocus();
   modalViewCallback_ = cb;
-  isDirty_ = true;
+  // Opening a popup does not invalidate the underlying screen.
+  modalView_->SetDirty(true);
 };
 
 void View::DismissModal() {
@@ -397,6 +420,7 @@ void View::DismissModal() {
     ModalView *finishedModal = modalView_;
     const uint32_t finishedModalId = finishedModal->GetInstanceId();
     ModalViewCallback callback = modalViewCallback_;
+    static_cast<AppWindow &>(w_).CloseOverlay(finishedModalId);
 
     // Clear current modal first so callback can safely open another modal.
     modalView_ = nullptr;
@@ -416,14 +440,9 @@ void View::DismissModal() {
 };
 
 void View::Redraw() {
-  if (modalView_) {
-    if (isDirty_) {
-      DrawView();
-    }
-    modalView_->Redraw();
-  } else {
-    DrawView();
-  }
+  // Modal rendering happens after AnimationUpdate completes the base frame.
+  // Capturing here would flush a title cleared by DrawView but not rebuilt yet.
+  DrawView();
   isDirty_ = false;
 };
 
@@ -433,6 +452,7 @@ void View::ProcessButton(unsigned short mask, unsigned short heldMask,
                          bool pressed) {
   const uint16_t eventMask = static_cast<uint16_t>(mask);
   const uint16_t physicalHeldMask = static_cast<uint16_t>(heldMask);
+  mask_ = physicalHeldMask;
   const bool wasPlayPressed = playButtonPressed_;
   const bool isPlayPressed = (physicalHeldMask & EPBM_PLAY) != 0;
   const bool playReleasedEvent = !pressed && wasPlayPressed && !isPlayPressed;
@@ -598,23 +618,40 @@ void View::ForceClear() { ((AppWindow &)w_).Clear(true); }
 
 void View::SetColor(ColorDefinition cd) { ((AppWindow &)w_).SetColor(cd); };
 
-void View::ClearTextRect(int x, int y, int w, int h) {
-  GUIRect rect(x, y, (x + w), (y + h));
-  w_.ClearTextRect(rect);
-};
+void View::DrawGraphicsRect(uint8_t region, const GUIRect &local,
+                            ColorDefinition color) {
+  static_cast<AppWindow &>(w_).DrawGraphicsRect(region, local, color);
+}
 
-void View::DrawString(int x, int y, const char *txt,
-                      const GUITextProperties &props) {
-  GUIPoint pos(x, y);
-  w_.DrawString(txt, pos, props);
-};
+void View::DrawRegionString(uint8_t region, int x, int y, const char *text,
+                            const GUITextProperties &props) {
+  static_cast<AppWindow &>(w_).DrawRegionString(region, text, GUIPoint(x, y),
+                                                props);
+}
+
+void View::HighlightSelection(uint8_t region, const GUIRect &cells) {
+  // Selection takes precedence over content colours without replacing glyphs.
+  static_cast<AppWindow &>(w_).StyleRegionTextRect(region, cells, CD_HILITE2,
+                                                   true);
+}
+
+void View::ClearRegionTextRect(uint8_t region, int x, int y, int width,
+                               int height) {
+  GUIRect rect(x, y, x + width, y + height);
+  static_cast<AppWindow &>(w_).ClearRegionTextRect(region, rect);
+}
 
 void View::DrawRect(GUIRect &r, ColorDefinition color) {
   w_.SetCurrentRectColor(AppWindow::GetColor(color));
   w_.DrawRect(r);
 }
 
-void View::drawBattery(GUITextProperties &props) {
+void View::drawBattery(uint8_t region, uint8_t columns,
+                       GUITextProperties &props) {
+  // Five text cells: caps plus three glyphs containing six visible segments.
+  constexpr int kBatteryWidgetWidth = 5;
+  if (columns < kBatteryWidgetWidth)
+    return;
   const uint32_t frameCounter = AppWindow::GetAnimationFrameCounter();
   constexpr uint32_t kBatteryPollIntervalFrames = PICO_CLOCK_HZ;
 
@@ -625,8 +662,7 @@ void View::drawBattery(GUITextProperties &props) {
     batteryDisplayInitialized = true;
   }
 
-  GUIPoint battpos = GetAnchor();
-  battpos._y = 0;
+  GUIPoint battpos(0, 0);
 
   uint8_t batteryPercent = batteryDisplayState.percentage;
   if (batteryPercent > 100) {
@@ -644,46 +680,64 @@ void View::drawBattery(GUITextProperties &props) {
 
   SetColor(batteryColor);
 
-  // Keep percentage branch compact: 3 digits + right battery cap.
-  char batteryText[4];
-  npf_snprintf(batteryText, sizeof(batteryText), "%3u", batteryPercent);
-
   GUITextProperties normalProps = props;
   normalProps.invert_ = false;
 
-  GUITextProperties invertedProps = normalProps;
-  invertedProps.invert_ = true;
+  int startX = columns - kBatteryWidgetWidth;
+  ClearRegionTextRect(region, startX, battpos._y, kBatteryWidgetWidth, 1);
 
-  constexpr int kBatteryWidgetWidth = 4; // 3 text chars + right-side symbol
-  int startX = SCREEN_WIDTH - kBatteryWidgetWidth;
-  ClearTextRect(startX, battpos._y, kBatteryWidgetWidth, 1);
+  char batteryText[kBatteryWidgetWidth + 1];
+  batteryText[0] = char_battery_left_s[0];
 
-  DrawString(startX, battpos._y, batteryText, invertedProps);
-  const char *rightSymbol = batteryDisplayState.charging
-                                ? char_symbol_charging_s
-                                : char_battery_right_s;
-  DrawString(startX + 3, battpos._y, rightSymbol, normalProps);
+  // Each interior glyph contains two segment slots. Empty, half, and full
+  // states across six slots give the gauge seven distinct levels.
+  const uint8_t filledHalfSegments =
+      static_cast<uint8_t>((batteryPercent * 6U + 50U) / 100U);
+  for (uint8_t segment = 0; segment < 3; ++segment) {
+    const uint8_t segmentFill =
+        filledHalfSegments > segment * 2U
+            ? static_cast<uint8_t>(filledHalfSegments - segment * 2U)
+            : 0U;
+    const char *glyph = segmentFill >= 2U   ? char_battery_full_s
+                        : segmentFill == 1U ? char_battery_half_s
+                                            : char_battery_empty_s;
+    batteryText[segment + 1U] = glyph[0];
+  }
+
+  batteryText[kBatteryWidgetWidth - 1] = batteryDisplayState.charging
+                                             ? char_symbol_charging_s[0]
+                                             : char_battery_right_s[0];
+  batteryText[kBatteryWidgetWidth] = '\0';
+  DrawRegionString(region, startX, battpos._y, batteryText, normalProps);
 }
 
-void View::drawTitlebar(GUITextProperties &props) {
-  drawTitle();
-  drawStatusIndicators(props);
+void View::drawTitlebar(uint8_t region, GUITextProperties &props) {
+  const TextRegionInfo *info =
+      static_cast<AppWindow &>(w_).GetTextRegion(region);
+  if (!info)
+    return;
+  drawTitle(region);
+  drawStatusIndicators(region, info->columns, props);
+  drawBattery(region, info->columns, props);
 }
 
-void View::drawStatusIndicators(GUITextProperties &props) {
-  // Layout: columns 21-27 for status indicators before the battery widget.
-  //   21: playing indicator (>)
-  //   22: audition/MIDI/sample/phrase/chain/tail indicator (A/M/S/P/C/T)
-  //   23: separator
-  //   24-26: project BPM
-  //   27: gap (space)
-  constexpr int kStatusWidgetStartX = SCREEN_WIDTH - 11; // column 21
+void View::drawStatusIndicators(uint8_t region, uint8_t columns,
+                                GUITextProperties &props) {
+  // Seven status cells immediately before the five-cell battery widget:
+  //   0: playing indicator (>)
+  //   1: audition/MIDI/sample/phrase/chain/tail indicator (A/M/S/P/C/T)
+  //   2: separator
+  //   3-5: project BPM
+  //   6: gap (space)
+  if (columns < 12)
+    return;
+  const int kStatusWidgetStartX = columns - 12;
   GUIPoint statusPos(0, 0);
 
   GUITextProperties normalProps = props;
   normalProps.invert_ = false;
 
-  // Status indicators at columns 21-22 (each draws space when inactive)
+  // First two status cells each draw a space when inactive.
   Player *player = Player::GetInstance();
   const bool isRunning = player != nullptr && player->IsRunning();
   const bool isAuditioning = player != nullptr && player->IsAuditioning();
@@ -697,14 +751,15 @@ void View::drawStatusIndicators(GUITextProperties &props) {
   const PlaybackStatusIndicator playbackStatus = ResolvePlaybackStatusIndicator(
       isRunning, isAuditioning, isMidiInputPlaying, isSamplePreviewing,
       isTailPlaying, playMode);
-  int indicatorX = kStatusWidgetStartX; // column 21
+  int indicatorX = kStatusWidgetStartX; // local column in the selected region
 
   // Playing indicator: ">" while any playback status is active.
   if (ShowsPlaybackIcon(playbackStatus)) {
     SetColor(CD_INFO);
-    DrawString(indicatorX, statusPos._y, char_playback_play_s, normalProps);
+    DrawRegionString(region, indicatorX, statusPos._y, char_playback_play_s,
+                     normalProps);
   } else {
-    DrawString(indicatorX, statusPos._y, " ", normalProps);
+    DrawRegionString(region, indicatorX, statusPos._y, " ", normalProps);
   }
   indicatorX++;
 
@@ -715,7 +770,7 @@ void View::drawStatusIndicators(GUITextProperties &props) {
   if (statusSuffix[0] != ' ') {
     SetColor(CD_INFO);
   }
-  DrawString(indicatorX, statusPos._y, statusSuffix, normalProps);
+  DrawRegionString(region, indicatorX, statusPos._y, statusSuffix, normalProps);
   indicatorX++;
 
   // Show the project tempo, including nudging, even while playback is stopped.
@@ -724,12 +779,11 @@ void View::drawStatusIndicators(GUITextProperties &props) {
       viewData_ && viewData_->project_ ? viewData_->project_->GetTempo() : 0;
   npf_snprintf(bpmText, sizeof(bpmText), "%3d", tempo);
   SetColor(CD_WARN);
-  DrawString(indicatorX, statusPos._y, " ", normalProps);
-  DrawString(indicatorX + 1, statusPos._y, bpmText, normalProps);
-  DrawString(indicatorX + 4, statusPos._y, " ", normalProps);
+  DrawRegionString(region, indicatorX, statusPos._y, " ", normalProps);
+  DrawRegionString(region, indicatorX + 1, statusPos._y, bpmText, normalProps);
+  DrawRegionString(region, indicatorX + 4, statusPos._y, " ", normalProps);
 
-  // Battery at far right
-  drawBattery(props);
+  // The titlebar draws the battery at the region's far right after status.
 }
 
 void View::updateDeferredPlayButtonHold() {
@@ -784,44 +838,70 @@ void View::drawPowerButtonUI(GUITextProperties &props) {
     pos._x = (SCREEN_WIDTH - mesgLen) / 2;
     pos._y = SCREEN_HEIGHT / 2 - 1;
 
+    auto &window = static_cast<AppWindow &>(w_);
+    window.BeginOverlay(AppWindow::PowerOverlayOwner);
+    window.SetOverlayBounds({int16_t(8 + (pos._x - 1) * 22),
+                             int16_t((pos._y - 1) * 30),
+                             int16_t((mesgLen + 3) * 22), 90});
     // Draw a background box
     SetColor(CD_BACKGROUND);
     for (int y = pos._y - 1; y <= pos._y + 1; y++) {
       for (int x = pos._x - 1; x <= (uint16_t)(pos._x + mesgLen + 1); x++) {
         GUITextProperties invProps = props;
         invProps.invert_ = true;
-        DrawString(x, y, " ", invProps);
+        w_.DrawString(" ", GUIPoint(x, y), invProps);
       }
     }
 
+    // Border stays inside the existing three-row overlay backing rectangle.
+    GUITextProperties borderProps = props;
+    borderProps.invert_ = false;
+    SetColor(CD_ACCENT);
+    char border[SCREEN_WIDTH + 1];
+    memset(border, 196, mesgLen + 3);
+    border[mesgLen + 3] = '\0';
+    border[0] = static_cast<char>(218);
+    border[mesgLen + 2] = static_cast<char>(191);
+    w_.DrawString(border, GUIPoint(pos._x - 1, pos._y - 1), borderProps);
+    border[0] = static_cast<char>(192);
+    border[mesgLen + 2] = static_cast<char>(217);
+    w_.DrawString(border, GUIPoint(pos._x - 1, pos._y + 1), borderProps);
+    border[0] = static_cast<char>(179);
+    border[1] = '\0';
+    w_.DrawString(border, GUIPoint(pos._x - 1, pos._y), borderProps);
+    w_.DrawString(border, GUIPoint(pos._x + mesgLen + 1, pos._y), borderProps);
+
     // Draw the message
     SetColor(CD_EMPHASIS);
-    DrawString(pos._x, pos._y, countdownMessage, props);
+    w_.DrawString(countdownMessage, pos, borderProps);
+    window.EndOverlay();
   } else if (powerButtonHoldCount_ > 0) {
     // Reset hold counter when button is released
     powerButtonHoldCount_ = 0;
 
-    // Force immediate redraw by calling DrawView directly
-    // This will redraw the entire screen with the correct content
-    DrawView();
-
-    Trace::Debug("Power button released! View redrawn.");
+    // Restore the live underlying pixels immediately; no full-view recovery.
+    static_cast<AppWindow &>(w_).CloseOverlay(AppWindow::PowerOverlayOwner);
+    Trace::Debug("Power button released! Overlay restored.");
   }
 }
 
-void View::printHelpLegend(TrackerCommand command, GUITextProperties props) {
+void View::printHelpLegend(uint8_t region, TrackerCommand command,
+                           GUITextProperties props) {
   if (command == TrackerCommand::InstrumentCommandNone) {
     return;
   }
 
   SetColor(CD_NORMAL);
   HelpLegendPair helpLegend = getHelpLegend(command);
-  // clear top two lines (including title bar)
-  DrawString(0, 0, "                           ", props);
-  DrawString(0, 1, "                           ", props);
-  DrawString(0, 0, helpLegend[0].c_str(), props);
+  // Clear both information lines before replacing the command description.
+  const TextRegionInfo *info =
+      static_cast<AppWindow &>(w_).GetTextRegion(region);
+  if (!info)
+    return;
+  ClearRegionTextRect(region, 0, 0, info->columns, 2);
+  DrawRegionString(region, 3, 0, helpLegend[0].c_str(), props);
   if (!helpLegend[1].empty()) {
-    DrawString(0, 1, helpLegend[1].c_str(), props);
+    DrawRegionString(region, 3, 1, helpLegend[1].c_str(), props);
   }
 }
 

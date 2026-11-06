@@ -167,6 +167,11 @@ bool MixerService::Init(Project *project) {
     result = out_->Init();
     if (result) {
       out_->AddModule(master_);
+      // The line input joins the mix after the master bus so it never feeds
+      // the channel effect sends, and before the render gain so a mixdown
+      // captures exactly what is monitored.
+      lineInMixer_.SetSource(audio->GetLineInSource());
+      out_->AddModule(lineInMixer_);
     }
 
     out_->AddObserver(*MidiService::GetInstance());
@@ -192,6 +197,8 @@ void MixerService::Close() {
     out_->ClearModules();
     master_.ClearModules();
   }
+  lineInMixer_.SetGain(kAudioSampleZero);
+  lineInMixer_.SetSource(nullptr);
   for (int i = 0; i < MAX_BUS_COUNT; i++) {
     bus_[i].ClearModules();
   }
@@ -323,6 +330,11 @@ void MixerService::RefreshMixRouting(Project *project) {
 
   master_.SetVolume(
       ToLogVolume(project->GetMasterVolume(), Project::MixerVolumeMaximum));
+
+  // The line input is mixed after the master bus, so its own level is the only
+  // gain it passes through. Zero releases the converter.
+  lineInMixer_.SetGain(
+      ToLogVolume(project->GetLineInMixLevel(), Project::MixerVolumeMaximum));
 
   for (int i = 0; i < TRACK_MIX_BUS_COUNT; ++i) {
     bus_[i].SetVolume(kAudioSampleOne);

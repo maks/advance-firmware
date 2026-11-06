@@ -1,6 +1,7 @@
 add_library(platform_usb
   usb_utils.cpp 
   usb_descriptors.c
+  usb_audio_handoff.cpp
 )
 target_link_libraries(platform_usb 
   PUBLIC tinyusb

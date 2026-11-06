@@ -25,11 +25,15 @@
 
 class DeviceView : public FieldView, public I_Observer {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   DeviceView(GUIWindow &w, ViewData *data);
   virtual ~DeviceView();
 
   virtual void ProcessButtonMask(unsigned short mask, bool pressed);
   virtual void DrawView();
+  void AnimationUpdate() override;
   virtual void OnPlayerUpdate(PlayerEventType, unsigned int){};
   virtual void OnFocus();
   void OnFocusLost() override;
@@ -44,10 +48,11 @@ private:
   void drawSectionHeaders();
 
   etl::vector<UIStaticField, 1> staticField_;
-  etl::vector<UIIntVarField, 9> intVarField_;
+  etl::vector<UIIntVarField, 10> intVarField_;
   etl::vector<UIActionField, 3> actionField_;
   etl::vector<UIBigHexVarField, 16> bigHexVarField_;
   etl::vector<UISwatchField, 16> swatchField_;
   bool configDirty_ = false;
+  bool usbStreamInactive_ = false;
 };
 #endif

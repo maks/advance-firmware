@@ -21,6 +21,9 @@ struct SelectionResampleRequest;
 
 class SongView : public ScreenView, public I_Observer {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   SongView(GUIWindow &w, ViewData *viewData);
   ~SongView() override;
   void Reset();
@@ -71,6 +74,7 @@ protected:
   void nudgeTempo(int direction);
 
 private:
+  void drawSelection();
   bool shouldDrawPlayTime() const override { return true; }
 
   bool updatingChain_; // .Flag that tells we're updating chain

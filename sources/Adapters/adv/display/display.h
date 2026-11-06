@@ -16,40 +16,51 @@
 extern "C" {
 #endif
 
-#include "ltdc.h"
+#include "System/Display/Display.h"
+#include "pixel_targets.h"
 #include <stdbool.h>
 
-#define TEXT_WIDTH 33 // extra half empty char
-#define TEXT_HEIGHT 24
-#define CHAR_HEIGHT 30
-#define CHAR_WIDTH 22
-#define DISPLAY_OFFSET 8
+#include "UIFramework/BasicDatas/TextRegionLayout.h"
 
-// ARNE-16 palette converted to RGB565 --
-// https://lospec.com/palette-list/arne-16
+// Configuration changes are transactional and do not render. The caller clears
+// and redraws after a successful layout change. Definitions come from the UI;
+// NULL is invalid. Before configuration the active layout is empty.
+bool display_configure_text_regions(const TextRegion *regions, uint8_t count);
+const TextRegionLayout *display_text_layout(void);
+void display_putc_region(uint8_t region, uint8_t column, uint8_t row, char c,
+                         bool invert);
+
+bool display_configure_graphics(GraphicsLayout layout);
+GraphicsLayout display_graphics_layout(void);
+// Changes only when graph pixels are invalidated, never when an overlay closes.
+uint32_t display_graphics_revision(void);
+// Debugger-readable capture diagnostics; cycles include interrupt/preemption
+// time. Underrun values count observation windows, not individual FIFO events.
+typedef struct {
+  uint32_t captures, last_cycles, max_cycles, last_pixels;
+  uint32_t underrun_before_capture, underrun_during_capture;
+} DisplayOverlayDiagnostics;
+extern volatile DisplayOverlayDiagnostics gDisplayOverlayDiagnostics;
+bool display_push_overlay(GraphicsRegion bounds);
+void display_pop_overlay(void);
+void display_discard_overlays(void);
+void display_select_target(uint8_t target);
+uint8_t display_target(void);
+uint8_t display_overlay_depth(void);
+void display_visit_pixels(GraphicsRegion bounds, bool text,
+                          PixelVisitor visitor, void *context);
+uint32_t display_visible_area(GraphicsRegion bounds, bool text);
+void display_draw_overlay_char(uint8_t x, uint8_t y, char c, bool invert);
+// Remote clients retain their own overlay backing; no framebuffer readback.
 typedef enum {
-  COLOR_BG,
-  COLOR_NORMAL,
-  COLOR_HILITE,
-  COLOR_HILITE2,
-  COLOR_GRAY,
-  COLOR_DESERT,
-  COLOR_ORANGE,
-  COLOR_YELLOW,
-  COLOR_WHITE,
-  COLOR_MIDNIGHT,
-  COLOR_DARK_SLATE_GRAY,
-  COLOR_GREEN,
-  COLOR_YELLOW_GREEN,
-  COLOR_BLUE,
-  COLOR_GURU_TXT,
-  COLOR_GURU_BG
-} color_t;
+  DISPLAY_OVERLAY_PUSH,
+  DISPLAY_OVERLAY_POP,
+  DISPLAY_OVERLAY_RESET
+} DisplayOverlayEvent;
+typedef void (*DisplayOverlayObserver)(DisplayOverlayEvent event,
+                                       GraphicsRegion bounds);
+void display_set_overlay_observer(DisplayOverlayObserver observer);
 
-void display_set_font_index(uint8_t idx);
-void display_set_cursor(uint8_t x, uint8_t y);
-void display_putc(char c, bool invert);
-void display_print(const char *s, bool invert);
 void display_set_foreground(color_t color);
 void display_set_background(color_t color);
 void display_clear(color_t color);
@@ -67,10 +78,6 @@ void display_draw_mono_bitmap_rgb565(uint16_t x, uint16_t y,
                                      uint16_t height, uint16_t row_bytes,
                                      uint16_t fg_color565,
                                      uint16_t bg_color565);
-void display_draw_region(uint8_t x, uint8_t y, uint8_t width, uint8_t height);
-void display_draw_sub_region(uint8_t x, uint8_t y, uint8_t width,
-                             uint8_t height);
-
 uint32_t rgb565_to_abgr8888(uint16_t rgb565);
 
 #ifdef __cplusplus

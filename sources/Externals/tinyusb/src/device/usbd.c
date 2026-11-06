@@ -605,8 +605,15 @@ void tud_task_ext(uint32_t timeout_ms, bool in_isr) {
   // Skip if stack is not initialized
   if (!tud_inited()) return;
 
+  // Applications sharing this task with role/MIDI work can bound a pass.
+#if defined(CFG_TUD_TASK_MAX_EVENTS)
+  uint32_t processed_events = 0;
+#endif
   // Loop until there is no more events in the queue
   while (1) {
+#if defined(CFG_TUD_TASK_MAX_EVENTS)
+    if (processed_events++ >= CFG_TUD_TASK_MAX_EVENTS) return;
+#endif
     dcd_event_t event;
     if (!osal_queue_receive(_usbd_q, &event, timeout_ms)) return;
 

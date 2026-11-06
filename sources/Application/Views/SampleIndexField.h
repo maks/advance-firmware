@@ -21,6 +21,7 @@ public:
   SampleIndexField(const GUIPoint &position, Variable &variable,
                    int32_t maximum, ChangeRequest changeRequest);
 
+  void Draw(GUIWindow &w, int offset = 0) override;
   void ProcessArrow(unsigned short mask) override;
   void ProcessClear() override;
 

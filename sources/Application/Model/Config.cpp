@@ -108,6 +108,7 @@ static const char *instrumentAuditionOnOff[2] = {"Off", "On"};
 static const char *midiControlSurfaceOptions[2] = {"Off", "Auto"};
 static const char *importResamplerOptions[] = {"None", "Linear", "Sinc",
                                                "Sinc HQ"};
+static const char *audioOutputOptions[3] = {"Analog", "USB", "USB+Analog"};
 static constexpr int kImportResamplerOptionCount = 4;
 
 // NOTE: these MUST match up to the RecordSource enum in record.h (of all
@@ -132,6 +133,7 @@ constexpr int DEFAULT_REC_SOURCE = 0x0;
 constexpr int DEFAULT_RECORD_LINE_GAIN_DB = 0;
 constexpr int DEFAULT_RECORD_MIC_GAIN_DB = 0;
 constexpr int DEFAULT_OUTPUT_VOLUME = 40;
+constexpr int DEFAULT_AUDIO_OUTPUT = 0;
 constexpr int DEFAULT_IMPORT_RESAMPLER = 2; // Sinc by default
 
 int NormalizeImportResamplerValue(int value) {
@@ -280,13 +282,6 @@ static const ConfigParam configParams[] = {
      instrumentAuditionOnOff,
      2,
      false},
-    {"UIFONT",
-     {.intValue = ThemeConstants::DEFAULT_UIFONT},
-     FourCC::VarUIFont,
-     ThemeConstants::FONT_NAMES,
-     ThemeConstants::FONT_COUNT,
-     false},
-
     // {"RESERVED1", ThemeConstants::DEFAULT_RESERVED1,
     // FourCC::VarReserved1Color},
     // {"RESERVED2", ThemeConstants::DEFAULT_RESERVED2,
@@ -315,6 +310,12 @@ static const ConfigParam configParams[] = {
      FourCC::VarOutputVolume,
      nullptr,
      0,
+     false},
+    {"AUDIOOUTPUT",
+     {.intValue = DEFAULT_AUDIO_OUTPUT},
+     FourCC::VarAudioOutput,
+     audioOutputOptions,
+     3,
      false},
     {"IMPORTRESAMP",
      {.intValue = DEFAULT_IMPORT_RESAMPLER},
@@ -371,8 +372,8 @@ Config::Config()
                      static_cast<int>(ThemeConstants::DEFAULT_EMPHASIS)),
       lineOut_(FourCC::VarLineOut, lineOutOptions, 3, DEFAULT_LINEOUT),
       midiDevice_(FourCC::VarMidiDevice, midiDeviceList, 4, DEFAULT_MIDIDEVICE),
-      midiInputDevice_(FourCC::VarMidiInputDevice, midiInputDeviceList, 4,
-                       DEFAULT_MIDI_INPUT_DEVICE),
+      midiInputDevice_(FourCC::VarMidiInputDevice, midiInputDeviceList,
+                       4, DEFAULT_MIDI_INPUT_DEVICE),
       midiControlSurface_(FourCC::VarMidiControlSurface,
                           midiControlSurfaceOptions, 2,
                           DEFAULT_MIDI_CONTROL_SURFACE),
@@ -383,11 +384,11 @@ Config::Config()
                           DEFAULT_INSTRUMENT_AUDITION),
       importResampler_(FourCC::VarImportResampler, importResamplerOptions,
                        kImportResamplerOptionCount, DEFAULT_IMPORT_RESAMPLER),
-      uiFont_(FourCC::VarUIFont, ThemeConstants::FONT_NAMES,
-              ThemeConstants::FONT_COUNT, ThemeConstants::DEFAULT_UIFONT),
       themeName_(FourCC::VarThemeName, ThemeConstants::DEFAULT_THEME_NAME),
       backlightLevel_(FourCC::VarBacklightLevel, DEFAULT_BACKLIGHT_LEVEL),
       outputVolume_(FourCC::VarOutputVolume, DEFAULT_OUTPUT_VOLUME),
+      audioOutput_(FourCC::VarAudioOutput, audioOutputOptions, 3,
+                   DEFAULT_AUDIO_OUTPUT),
       recordSource_(FourCC::VarRecordSource, recordSourceOptions, 4, 1),
       recordLineGain_(FourCC::VarRecordLineGain, DEFAULT_RECORD_LINE_GAIN_DB),
       recordMicGain_(FourCC::VarRecordMicGain, DEFAULT_RECORD_MIC_GAIN_DB) {
@@ -412,10 +413,10 @@ Config::Config()
   variables_.push_back(&remoteUI_);
   variables_.push_back(&instrumentAudition_);
   variables_.push_back(&importResampler_);
-  variables_.push_back(&uiFont_);
   variables_.push_back(&themeName_);
   variables_.push_back(&backlightLevel_);
   variables_.push_back(&outputVolume_);
+  variables_.push_back(&audioOutput_);
   variables_.push_back(&recordSource_);
   variables_.push_back(&recordLineGain_);
   variables_.push_back(&recordMicGain_);
@@ -658,16 +659,6 @@ bool Config::SaveTheme(tinyxml2::XMLPrinter *printer, const char *themeName) {
   // We don't need to save the theme name in the file
   // The filename itself serves as the theme name
 
-  // Save the font setting
-  Variable *fontVar = FindVariable(FourCC::VarUIFont);
-  if (fontVar) {
-    printer->OpenElement("Font");
-    char buf[16];
-    npf_snprintf(buf, sizeof(buf), "%d", fontVar->GetInt());
-    printer->PushAttribute("value", buf);
-    printer->CloseElement(); // Font
-  }
-
   // Write color variables
   WriteColorVariables(printer);
 
@@ -739,27 +730,16 @@ bool Config::LoadTheme(PersistencyDocument *doc) {
       char *elemName = doc->ElemName();
       Trace::Log("CONFIG", "Processing element: %s", elemName);
 
-      if (strcmp(elemName, "Font") == 0) {
-        // Process Font element attributes
-        while (doc->NextAttribute()) {
-          if (strcmp(doc->attrname_, "value") == 0) {
-            Trace::Log("CONFIG", "Found font value: %s", doc->attrval_);
-            // Parse font value as decimal
-            int fontValue = atoi(doc->attrval_);
-            Trace::Log("CONFIG", "Parsed font value: %d", fontValue);
-
-            Variable *fontVar = FindVariable(FourCC::VarUIFont);
-            if (fontVar) {
-              fontVar->SetInt(fontValue);
-              Trace::Log("CONFIG", "Set font variable to: %d", fontValue);
-            }
-          }
-        }
-      } else if (strcmp(elemName, "Color") == 0) {
+      // Unknown elements, including legacy Font settings, are ignored.
+      if (strcmp(elemName, "Color") == 0) {
         Trace::Log("CONFIG", "Found Color element");
 
         // Process this color element directly
         ReadColorVariable(doc);
+      } else {
+        // Consume obsolete/unknown leaf elements before advancing siblings.
+        while (doc->NextAttribute()) {
+        }
       }
     } while (doc->NextSibling());
   }
@@ -773,9 +753,6 @@ void Config::ResetTheme() {
     }
   }
 
-  if (Variable *font = FindVariable(FourCC::VarUIFont)) {
-    font->Reset();
-  }
   if (Variable *name = FindVariable(FourCC::VarThemeName)) {
     name->Reset();
   }

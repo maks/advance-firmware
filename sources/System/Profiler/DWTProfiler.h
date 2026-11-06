@@ -19,7 +19,7 @@
 
 #include "Application/Model/Song.h"
 
-#if !defined(HOST_TEST) && ENABLE_PROFILING
+#if !defined(HOST_TEST) && !defined(WASM) && ENABLE_PROFILING
 #include "Adapters/adv/platform/platform.h"
 #include "System/Console/Trace.h"
 #include "System/Console/nanoprintf.h"
@@ -111,7 +111,7 @@ inline const char *GetProfilerUseColorEnd(uint32_t absolutePctX1000,
              : "";
 }
 
-#if !defined(HOST_TEST) && ENABLE_PROFILING
+#if !defined(HOST_TEST) && !defined(WASM) && ENABLE_PROFILING
 namespace DWTProfiler {
 constexpr uint32_t kReportIntervalUs = 5000000;
 

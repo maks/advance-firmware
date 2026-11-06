@@ -25,6 +25,9 @@ class OutputEffect;
 
 class MasterEffectsView : public FieldView {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   MasterEffectsView(GUIWindow &w, ViewData *viewData);
   ~MasterEffectsView();
 

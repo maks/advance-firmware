@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1015" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="picoTracker" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <title>picoTracker Advance</title>
+  <script>
+    window.goatcounter = {
+      path: (path) => '/app' + path,
+      no_onload: location.hostname !== 'app.xiphonics.com'
+    };
+  </script>
+  <script data-goatcounter="https://xiphonics.goatcounter.com/count"
+          async src="https://gc.zgo.at/count.js"></script>
+  <script src="./coi-serviceworker.js"></script>
+  <script>
+    window.__logs = [];
+    window.__errors = [];
+    const origLog = console.log;
+    const origErr = console.error;
+    const origWarn = console.warn;
+    console.log = (...args) => { window.__logs.push(['log', args.join(' ')]); origLog(...args); };
+    console.warn = (...args) => { window.__logs.push(['warn', args.join(' ')]); origWarn(...args); };
+    console.error = (...args) => { window.__logs.push(['err', args.join(' ')]); origErr(...args); };
+    window.addEventListener('error', (e) => window.__errors.push(e.message || String(e)));
+    window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason?.message || e.reason)));
+  </script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #0f1015;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .page-header {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 720px;
+      margin-bottom: 16px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-logo {
+      display: block;
+      width: 56px;
+      height: 56px;
+      overflow: hidden;
+    }
+    .brand-logo img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      transform: scale(1.6);
+    }
+    .brand-name {
+      position: relative;
+      display: block;
+      width: 280px;
+      height: 50px;
+      overflow: hidden;
+    }
+    .brand-name img {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      display: block;
+      width: 1000px;
+      max-width: none;
+      height: auto;
+      transform: translate(-50%, -50%);
+    }
+    .app-menu {
+      position: absolute;
+      top: 11px;
+      right: 0;
+      z-index: 20;
+    }
+    .menu-toggle {
+      width: 38px;
+      height: 34px;
+      padding: 0;
+      border: 1px solid #44475a;
+      border-radius: 4px;
+      background: #282a36;
+      color: #f8f8f2;
+      cursor: pointer;
+      font: 20px/1 inherit;
+    }
+    .menu-toggle:hover,
+    .menu-toggle:focus-visible {
+      background: #44475a;
+    }
+    .menu-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      min-width: 150px;
+      padding: 6px;
+      border: 1px solid #44475a;
+      border-radius: 5px;
+      background: #181a20;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    }
+    .menu-panel[hidden] {
+      display: none;
+    }
+    .menu-panel .btn {
+      box-sizing: border-box;
+      display: block;
+      width: 100%;
+      border-color: transparent;
+      background: transparent;
+      text-align: left;
+      text-decoration: none;
+    }
+    .menu-panel .btn:hover,
+    .menu-panel .btn:focus-visible {
+      background: #44475a;
+    }
+    .canvas-container {
+      position: relative;
+      background: #000;
+      border: 2px solid #282a36;
+      border-radius: 4px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      width: 720px;
+      height: 720px;
+    }
+    #picotracker-canvas {
+      width: 720px;
+      height: 720px;
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #toolbar {
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      width: 720px;
+      justify-content: space-between;
+    }
+    #status-bar {
+      padding: 8px 16px;
+      background: #181a20;
+      border-radius: 4px;
+      border: 1px solid #282a36;
+      font-size: 13px;
+      color: #8be9fd;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-grow: 1;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ffb86c;
+    }
+    .status-dot.ready {
+      background: #50fa7b;
+    }
+    .status-dot.error {
+      background: #ff5555;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      background: #282a36;
+      color: #f8f8f2;
+      border: 1px solid #44475a;
+      border-radius: 4px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s ease;
+    }
+    .btn:hover {
+      background: #44475a;
+    }
+    .btn:active {
+      background: #6272a4;
+    }
+    .btn.active {
+      border-color: #50fa7b;
+      color: #50fa7b;
+    }
+    .btn.error {
+      border-color: #ff5555;
+      color: #ff5555;
+    }
+    .modal-status {
+      font-size: 12px;
+      color: #6272a4;
+    }
+    .modal-status.error {
+      color: #ff5555;
+    }
+    .storage-tag {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: #282a36;
+      border: 1px solid #44475a;
+      color: #50fa7b;
+      font-family: monospace;
+      margin-left: auto;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .storage-tag.saving {
+      color: #ffb86c;
+      border-color: #ffb86c;
+    }
+    .storage-tag.error {
+      color: #ff5555;
+      border-color: #ff5555;
+    }
+    /* Modal Dialog */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(2px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open {
+      display: flex;
+    }
+    .modal-dialog {
+      background: #181a20;
+      border: 1px solid #44475a;
+      border-radius: 6px;
+      width: 620px;
+      max-width: 90vw;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.6);
+      color: #f8f8f2;
+    }
+    .modal-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #282a36;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: #6272a4;
+      font-size: 20px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .modal-close:hover {
+      color: #ff5555;
+    }
+    .modal-tabs {
+      display: flex;
+      border-bottom: 1px solid #282a36;
+      background: #14161b;
+    }
+    .modal-tab {
+      padding: 10px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      color: #6272a4;
+      border-bottom: 2px solid transparent;
+      user-select: none;
+    }
+    .modal-tab:hover {
+      color: #f8f8f2;
+    }
+    .modal-tab.active {
+      color: #50fa7b;
+      border-bottom-color: #50fa7b;
+      background: #181a20;
+    }
+    .modal-body {
+      padding: 16px 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-footer {
+      padding: 12px 20px;
+      border-top: 1px solid #282a36;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #14161b;
+      border-bottom-left-radius: 6px;
+      border-bottom-right-radius: 6px;
+    }
+    .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .file-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #20222a;
+      border: 1px solid #282a36;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .file-info {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .file-name {
+      font-family: monospace;
+      color: #8be9fd;
+    }
+    .file-meta {
+      font-size: 11px;
+      color: #6272a4;
+    }
+    .file-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .empty-message {
+      padding: 24px;
+      text-align: center;
+      color: #6272a4;
+      font-size: 13px;
+    }
+    .preview-notice {
+      position: fixed;
+      inset: 0;
+      z-index: 3000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(3px);
+    }
+    .preview-notice:not([open]) {
+      display: none;
+    }
+    .preview-notice summary {
+      list-style: none;
+      cursor: pointer;
+    }
+    .preview-notice > summary {
+      order: 2;
+      width: fit-content;
+      margin-top: 12px;
+      padding: 10px 18px;
+      border: 1px solid #50fa7b;
+      border-radius: 4px;
+      background: #282a36;
+      color: #50fa7b;
+      font-weight: 600;
+    }
+    .preview-notice summary::-webkit-details-marker {
+      display: none;
+    }
+    .preview-notice-dialog {
+      order: 1;
+      width: min(560px, calc(100vw - 40px));
+      max-height: calc(100vh - 96px);
+      max-height: calc(100dvh - 96px);
+      overflow-y: auto;
+      padding: 24px;
+      border: 1px solid #6272a4;
+      border-radius: 8px;
+      background: #181a20;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+      color: #f8f8f2;
+    }
+    .preview-notice h2 {
+      margin: 0 0 16px;
+      color: #ffb86c;
+      font-size: 20px;
+    }
+    .preview-notice p,
+    .preview-notice li {
+      color: #d0d0d0;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .preview-notice ul {
+      padding-left: 22px;
+    }
+    .preview-notice li + li {
+      margin-top: 6px;
+    }
+    .preview-notice > summary:hover,
+    .preview-notice > summary:focus-visible {
+      background: #343746;
+      outline: 2px solid #50fa7b;
+      outline-offset: 2px;
+    }
+    .credits-dialog {
+      width: min(560px, calc(100vw - 40px));
+      max-height: calc(100vh - 40px);
+      max-height: calc(100dvh - 40px);
+      overflow-y: auto;
+      padding: 24px;
+      border: 1px solid #6272a4;
+      border-radius: 8px;
+      background: #181a20;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+      color: #f8f8f2;
+    }
+    .credits-dialog::backdrop {
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(3px);
+    }
+    .credits-dialog h2 {
+      margin: 0 0 16px;
+      color: #ffb86c;
+      font-size: 20px;
+    }
+    .credits-dialog pre {
+      margin: 0;
+      color: #d0d0d0;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .credits-dialog form {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .credits-dialog .btn {
+      border-color: #50fa7b;
+      color: #50fa7b;
+      font-weight: 600;
+    }
+    /* Tab Lock Overlay */
+    #tab-lock-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 16, 21, 0.95);
+      z-index: 2000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    #tab-lock-overlay.open {
+      display: flex;
+    }
+    #tab-lock-overlay h2 {
+      color: #ffb86c;
+      margin-bottom: 12px;
+    }
+    #tab-lock-overlay p {
+      max-width: 480px;
+      color: #a0a0a0;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    #key-guide {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #181a20;
+      border-radius: 4px;
+      border: 1px solid #282a36;
+      font-size: 12px;
+      color: #a0a0a0;
+      width: 720px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+    }
+    .key-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .key-badge {
+      background: #282a36;
+      border: 1px solid #44475a;
+      border-radius: 3px;
+      padding: 2px 6px;
+      color: #f1fa8c;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    #mobile-controls {
+      display: none;
+    }
+    .mobile-controls-enabled {
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      overscroll-behavior: none;
+    }
+    .mobile-controls-enabled .page-header {
+      width: min(720px, calc(100vw - 24px));
+      margin-bottom: 10px;
+    }
+    .mobile-controls-enabled #key-guide {
+      display: none;
+    }
+    .mobile-controls-enabled .canvas-container,
+    .mobile-controls-enabled #picotracker-canvas,
+    .mobile-controls-enabled #toolbar {
+      width: min(720px, calc(100vw - 24px));
+    }
+    .mobile-controls-enabled .canvas-container,
+    .mobile-controls-enabled #picotracker-canvas {
+      /* Keep the canvas square without relying on Safari to combine an
+         intrinsic canvas height with aspect-ratio and height: auto. */
+      height: min(720px, calc(100vw - 24px));
+    }
+    .mobile-controls-enabled #mobile-controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      width: min(560px, calc(100vw - 24px));
+      margin-top: 18px;
+      gap: clamp(7px, 2.5vw, 14px);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    .touch-button {
+      width: 100%;
+      aspect-ratio: 1;
+      min-width: 0;
+      min-height: 0;
+      margin: 0;
+      padding: 0 8px;
+      border: 2px solid #555867;
+      border-radius: 8px;
+      background: linear-gradient(#22242c, #16171d);
+      box-shadow: inset 0 0 0 2px #0d0e12, 0 3px 6px rgba(0, 0, 0, 0.45);
+      color: #f8f8f2;
+      font: 600 clamp(10px, 3vw, 14px)/1 inherit;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .touch-direction,
+    .touch-play {
+      font-size: clamp(19px, 6vw, 28px);
+    }
+    .touch-up {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .touch-play {
+      grid-column: 3;
+      grid-row: 1;
+    }
+    .touch-edit {
+      grid-column: 4;
+      grid-row: 1;
+    }
+    .touch-left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .touch-down {
+      grid-column: 2;
+      grid-row: 2;
+    }
+    .touch-right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+    .touch-enter {
+      grid-column: 4;
+      grid-row: 2;
+    }
+    .touch-alt {
+      grid-column: 2;
+      grid-row: 3;
+    }
+    .touch-nav {
+      grid-column: 3;
+      grid-row: 3;
+    }
+    .touch-button.is-pressed {
+      color: #8be9fd;
+      border-color: #8be9fd;
+      background: #343746;
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
+      transform: translateY(1px);
+    }
+    @media (max-width: 600px) {
+      .brand {
+        gap: 6px;
+      }
+      .brand-logo {
+        width: 38px;
+        height: 38px;
+      }
+      .brand-name {
+        width: 220px;
+        height: 38px;
+      }
+      .brand-name img {
+        width: 760px;
+      }
+      .app-menu {
+        top: 2px;
+      }
+      .mobile-controls-enabled {
+        padding-top: 10px;
+      }
+      .mobile-controls-enabled #toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .mobile-controls-enabled .btn {
+        padding: 8px 4px;
+        font-size: 11px;
+      }
+    }
+    @media (max-width: 360px) {
+      .brand-name {
+        width: 170px;
+      }
+      .brand-name img {
+        width: 650px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <details class="preview-notice" open>
+    <summary>Continue to preview</summary>
+    <div class="preview-notice-dialog" role="dialog" aria-labelledby="preview-notice-title" aria-describedby="preview-notice-description">
+      <h2 id="preview-notice-title">Advance Web Preview</h2>
+      <p id="preview-notice-description">This browser version is an early preview of the picoTracker Advance workflow. It is provided so you can try making music with the tracker and decide whether the Advance device is right for you.</p>
+      <p>This preview is not a fully functional or supported standalone product. Some hardware features are unavailable, including:</p>
+      <ul>
+        <li>Recording audio</li>
+        <li>MIDI input and output</li>
+      </ul>
+      <p>Features, behavior, and availability may differ from the Advance device. Continue to the preview with that in mind.</p>
+    </div>
+  </details>
+  <header class="page-header">
+    <a class="brand" href="https://xiphonics.com/" aria-label="xiphonics home">
+      <span class="brand-logo"><img src="./assets/picture-1080x1080-youtube.jpg" alt="" /></span>
+      <span class="brand-name"><img src="./assets/banner-ultralong.jpg" alt="" /></span>
+    </a>
+    <div class="app-menu">
+      <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Open menu" aria-controls="menu-panel" aria-expanded="false">&#9776;</button>
+      <div id="menu-panel" class="menu-panel" role="menu" hidden>
+        <button id="btn-files" class="btn" type="button" role="menuitem">Files</button>
+        <a class="btn" href="https://xiphonics.com/products/picotracker" target="_blank" rel="noopener" role="menuitem">Shop Advance</a>
+        <button id="btn-credits" class="btn" type="button" role="menuitem">Content credits</button>
+      </div>
+    </div>
+  </header>
+  <dialog id="credits-dialog" class="credits-dialog" aria-labelledby="credits-title">
+    <h2 id="credits-title">Content credits</h2>
+    <pre id="credits-content">Loading credits...</pre>
+    <form method="dialog"><button class="btn" type="submit">Close</button></form>
+  </dialog>
+  <div class="canvas-container">
+    <canvas id="picotracker-canvas" width="720" height="720"></canvas>
+  </div>
+  <div id="mobile-controls" aria-label="Tracker controls">
+    <button type="button" class="touch-button touch-direction touch-up" data-action="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="touch-button touch-play" data-action="play" aria-label="Play">&#9655;</button>
+    <button type="button" class="touch-button touch-edit" data-action="edit">Edit</button>
+    <button type="button" class="touch-button touch-direction touch-left" data-action="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="touch-button touch-direction touch-down" data-action="down" aria-label="Down">&#9660;</button>
+    <button type="button" class="touch-button touch-direction touch-right" data-action="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="touch-button touch-enter" data-action="enter">Enter</button>
+    <button type="button" class="touch-button touch-alt" data-action="alt">Alt</button>
+    <button type="button" class="touch-button touch-nav" data-action="nav">Nav</button>
+  </div>
+  <div id="toolbar">
+    <div id="status-bar">
+      <div id="status-dot" class="status-dot"></div>
+      <span id="status-text">Initializing web workbench...</span>
+      <span id="storage-status" class="storage-tag">Saved</span>
+    </div>
+  </div>
+  <div id="key-guide">
+    <div class="key-item"><span class="key-badge">Arrows</span> / <span class="key-badge">WASD</span> Move</div>
+    <div class="key-item"><span class="key-badge">X</span> Edit</div>
+    <div class="key-item"><span class="key-badge">/</span> or <span class="key-badge">L</span> Nav</div>
+    <div class="key-item"><span class="key-badge">Enter</span> or <span class="key-badge">K</span> Enter</div>
+    <div class="key-item"><span class="key-badge">Space</span> or <span class="key-badge">C</span> Play</div>
+    <div class="key-item"><span class="key-badge">V</span> Select</div>
+    <div class="key-item"><span class="key-badge">Z</span> Alt</div>
+  </div>
+
+  <!-- File Manager Modal -->
+  <div id="files-modal" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2>File Manager</h2>
+        <button id="modal-close-btn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-tabs">
+        <div class="modal-tab active" data-tab="projects">Projects</div>
+        <div class="modal-tab" data-tab="renders">Audio Renders</div>
+        <div class="modal-tab" data-tab="backup">Backup &amp; Restore</div>
+      </div>
+      <div class="modal-body">
+        <!-- Projects Tab -->
+        <div id="tab-content-projects" class="tab-content">
+          <div style="display:flex; justify-content:space-between; margin-bottom:12px; align-items:center;">
+            <span style="font-size:12px; color:#a0a0a0;">Projects in storage (/data/projects)</span>
+            <div>
+              <button id="btn-import-project" class="btn btn-sm">Import .zip</button>
+              <input type="file" id="input-import-project" accept=".zip" style="display:none;">
+            </div>
+          </div>
+          <div id="project-list" class="file-list">
+            <div class="empty-message">No projects found.</div>
+          </div>
+        </div>
+
+        <!-- Renders Tab -->
+        <div id="tab-content-renders" class="tab-content" style="display:none;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:12px; align-items:center;">
+            <span style="font-size:12px; color:#a0a0a0;">WAV renders (/data/renders)</span>
+            <button id="btn-refresh-renders" class="btn btn-sm">Refresh</button>
+          </div>
+          <div id="render-list" class="file-list">
+            <div class="empty-message">No rendered audio files.</div>
+          </div>
+        </div>
+
+        <!-- Backup Tab -->
+        <div id="tab-content-backup" class="tab-content" style="display:none;">
+          <div style="margin-bottom:16px;">
+            <h3 style="font-size:14px; margin-top:0; color:#50fa7b;">Full Workspace Backup</h3>
+            <p style="font-size:12px; color:#a0a0a0; line-height:1.4;">
+              Export all projects, samples, instruments, and settings into a single .zip file.
+            </p>
+            <button id="btn-export-backup" class="btn btn-sm">Download Full Backup (.zip)</button>
+          </div>
+          <hr style="border:0; border-top:1px solid #282a36; margin:16px 0;">
+          <div>
+            <h3 style="font-size:14px; margin-top:0; color:#ffb86c;">Restore Workspace</h3>
+            <p style="font-size:12px; color:#a0a0a0; line-height:1.4;">
+              Restore data from a previously downloaded .zip backup. Existing files with the same name will be overwritten.
+            </p>
+            <button id="btn-restore-backup" class="btn btn-sm">Restore from .zip</button>
+            <input type="file" id="input-restore-backup" accept=".zip" style="display:none;">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="modal-status" class="modal-status"></span>
+        <button id="btn-modal-done" class="btn btn-sm">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-Tab Lock Warning Overlay -->
+  <div id="tab-lock-overlay">
+    <h2>Another Tab is Active</h2>
+    <p>picoTracker storage is active in another tab or window. To prevent data corruption, only one tab can access storage at a time.</p>
+    <button id="btn-lock-retry" class="btn">Retry Access</button>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -33,3 +33,16 @@ Generated png files for the Hourglass and YouSquared fonts from the code in the 
     b) Export wide font regular range
 
     `python3 import.py font_wide.png --start 32 --end 127 --name FONT_WIDE`
+
+3) `extend-small.py`
+
+    Run `python3 tools/fonts/extend-small.py` from the repository root, then
+    `clang-format -i sources/Adapters/adv/display/font.h`. This updates FONTSMALL
+    codes 128–255 from FONT using offline area-averaged 22×30 to 16×24 coverage.
+    Existing small-font codes 32–127 are preserved. The generated assets add
+    48 KiB of flash, with no runtime resizing or additional RAM. Remote clients
+    should use the updated FONTSMALL asset for the same extended glyphs.
+
+    To extend the 10×15 tiny font instead, use
+    `python3 tools/fonts/extend-small.py --font FONTTINY`. Its extended range
+    adds 19,200 bytes of flash and supplies the VU bar glyphs.

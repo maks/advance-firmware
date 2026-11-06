@@ -42,6 +42,11 @@
 #include "device/usbd_pvt.h"
 #include "dwc2_common.h"
 
+#ifdef ADV
+  #include "FreeRTOS.h"
+  #include "task.h"
+#endif
+
 //--------------------------------------------------------------------+
 // MACRO TYPEDEF CONSTANT ENUM
 //--------------------------------------------------------------------+
@@ -863,6 +868,15 @@ static void handle_epin_slave(uint8_t rhport, uint8_t epnum, dwc2_diepint_t diep
       edpt_schedule_packets(rhport, epnum, TUSB_DIR_IN);
     } else {
       dcd_event_xfer_complete(rhport, epnum | TUSB_DIR_IN_MASK, xfer->total_len, XFER_RESULT_SUCCESS, true);
+#if defined(ADV) && (configUSE_PREEMPTION == 0)
+      // A timed-out queue wait can leave the USB task ready rather than blocked.
+      // Posting then does not set xHigherPriorityTaskWoken. Explicitly schedule
+      // after queuing audio IN completion so the priority-7 task can re-arm.
+      // TinyUSB state and packet preparation still belong to the USB task.
+      if (epnum == 3) {
+        portYIELD_FROM_ISR(pdTRUE);
+      }
+    #endif
     }
   }
 
@@ -956,6 +970,15 @@ static void handle_epin_dma(uint8_t rhport, uint8_t epnum, dwc2_diepint_t diepin
         dma_setup_prepare(rhport);
       }
       dcd_event_xfer_complete(rhport, epnum | TUSB_DIR_IN_MASK, xfer->total_len, XFER_RESULT_SUCCESS, true);
+#if defined(ADV) && (configUSE_PREEMPTION == 0)
+      // A timed-out queue wait can leave the USB task ready rather than blocked.
+      // Posting then does not set xHigherPriorityTaskWoken. Explicitly schedule
+      // after queuing audio IN completion so the priority-7 task can re-arm.
+      // TinyUSB state and packet preparation still belong to the USB task.
+      if (epnum == 3) {
+        portYIELD_FROM_ISR(pdTRUE);
+      }
+    #endif
     }
   }
 }

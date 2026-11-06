@@ -4,9 +4,6 @@
  * Copyright (c) 2026 xiphonics, inc.
  */
 
-/*
- * Test stub for host-only builds.
- */
 #ifndef _TRACE_H_
 #define _TRACE_H_
 

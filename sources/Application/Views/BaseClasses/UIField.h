@@ -35,6 +35,15 @@ public:
   void SetPosition(GUIPoint &);
   virtual GUIPoint GetPosition();
   GUIColor GetColor();
+  void SetTextRegion(uint8_t region, int8_t originX = 0, int8_t originY = 0) {
+    region_ = region;
+    textOriginX_ = originX;
+    textOriginY_ = originY;
+  }
+  uint8_t GetTextRegion() const { return region_; }
+  GUIPoint GetTextPosition() {
+    return GUIPoint(x_ - textOriginX_, y_ - textOriginY_);
+  }
 
   virtual bool IsStatic();
 
@@ -48,5 +57,8 @@ protected:
   uint8_t x_;
   uint8_t y_;
   bool focus_;
+  // Navigation coordinates can span regions; rendering always uses local cells.
+  uint8_t region_ = TEXT_REGION_BODY;
+  int8_t textOriginX_ = 0, textOriginY_ = 0;
 };
 #endif

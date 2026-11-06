@@ -12,6 +12,7 @@
  */
 
 #include "TableView.h"
+#include "Application/AppWindow.h"
 #include "Application/Instruments/CommandList.h"
 #include "Application/Player/TablePlayback.h"
 #include "Application/Utils/HelpLegend.h"
@@ -905,13 +906,8 @@ void TableView::setTextProps(GUITextProperties &props, int row, int col,
 
   bool invert = false;
 
-  if (clipboard_.active_) {
-    GUIRect selRect = getSelectionRect();
-    if ((row >= selRect.Left()) && (row <= selRect.Right()) &&
-        (col >= selRect.Top()) && (col <= selRect.Bottom())) {
-      invert = true;
-    }
-  } else {
+  // Block selections are styled once after all ordinary fields are drawn.
+  if (!clipboard_.active_) {
     if ((col_ == row) && (row_ == col)) {
       invert = true;
     }
@@ -931,6 +927,7 @@ void TableView::setTextProps(GUITextProperties &props, int row, int col,
 void TableView::DrawView() {
 
   Clear();
+  commandHelp_.Reset();
 
   GUITextProperties props;
   GUIPoint pos = GetTitlePosition();
@@ -943,7 +940,7 @@ void TableView::DrawView() {
   format.width(2).fill('0');
   etl::to_string(viewData_->currentTable_, title, format, true);
   setTitle(title);
-  // drawTitlebar(props);
+  // drawTitlebar(TEXT_REGION_HEADER, props);
 
   // Compute song grid location
 
@@ -957,7 +954,7 @@ void TableView::DrawView() {
   for (int j = 0; j < 16; j++) {
     ((j / ALT_ROW_NUMBER) % 2) ? SetColor(CD_ACCENT) : SetColor(CD_ACCENTALT);
     hex2char(j, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     pos._y++;
   }
 
@@ -972,12 +969,9 @@ void TableView::DrawView() {
   for (int j = 0; j < 16; j++) {
     TrackerCommand command = *f++;
     setTextProps(props, 0, j, false);
-    DrawString(pos._x, pos._y, command.c_str(), props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, command.c_str(), props);
     setTextProps(props, 0, j, true);
     pos._y++;
-    if (j == row_ && (col_ == 0 || col_ == 1)) {
-      printHelpLegend(command, props);
-    }
   }
 
   // Draw commands params 1
@@ -992,7 +986,7 @@ void TableView::DrawView() {
     ushort p = *param++;
     setTextProps(props, 1, j, false);
     hexshort2char(p, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     setTextProps(props, 1, j, true);
     pos._y++;
   }
@@ -1007,12 +1001,9 @@ void TableView::DrawView() {
   for (int j = 0; j < 16; j++) {
     TrackerCommand command = *f++;
     setTextProps(props, 2, j, false);
-    DrawString(pos._x, pos._y, command.c_str(), props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, command.c_str(), props);
     setTextProps(props, 2, j, true);
     pos._y++;
-    if (j == row_ && (col_ == 2 || col_ == 3)) {
-      printHelpLegend(command, props);
-    }
   }
 
   // Draw commands params
@@ -1027,7 +1018,7 @@ void TableView::DrawView() {
     ushort p = *param++;
     setTextProps(props, 3, j, false);
     hexshort2char(p, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     setTextProps(props, 3, j, true);
     pos._y++;
   }
@@ -1042,12 +1033,9 @@ void TableView::DrawView() {
   for (int j = 0; j < 16; j++) {
     TrackerCommand command = *f++;
     setTextProps(props, 4, j, false);
-    DrawString(pos._x, pos._y, command.c_str(), props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, command.c_str(), props);
     setTextProps(props, 4, j, true);
     pos._y++;
-    if (j == row_ && (col_ == 4 || col_ == 5)) {
-      printHelpLegend(command, props);
-    }
   }
 
   // Draw commands params 3
@@ -1062,7 +1050,7 @@ void TableView::DrawView() {
     ushort p = *param++;
     setTextProps(props, 5, j, false);
     hexshort2char(p, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     setTextProps(props, 5, j, true);
     pos._y++;
   }
@@ -1073,6 +1061,20 @@ void TableView::DrawView() {
     cmdEditField_.Draw(w_);
   };
 
+  if (clipboard_.active_) {
+    // Logical fields have different widths; include only separators BETWEEN
+    // selected fields, never padding beyond either outer selection edge.
+    static constexpr uint8_t starts[] = {0, 4, 9, 13, 18, 22};
+    static constexpr uint8_t ends[] = {3, 8, 12, 17, 21, 26};
+    const GUIRect selected = getSelectionRect();
+    HighlightSelection(TEXT_REGION_BODY,
+                       GUIRect(anchor._x + starts[selected.Left()],
+                               anchor._y + selected.Top(),
+                               anchor._x + ends[selected.Right()],
+                               anchor._y + selected.Bottom() + 1));
+  }
+
+  drawMasterVuMeter(Player::GetInstance(), props, true);
   drawMap();
   drawNotes();
 
@@ -1096,21 +1098,26 @@ void TableView::AnimationUpdate() {
   // First call the parent class implementation to draw the battery gauge
   ScreenView::AnimationUpdate();
 
-  // Redraw help legend if cursor is on a command column (ScreenView::
-  // AnimationUpdate redraws the title bar which overwrites it)
-  GUITextProperties props;
-  drawTitlebar(props);
-  if (col_ >= 0 && col_ <= 5) {
-    Table &table =
+  // Help is transient while ENTER is held on a command or its parameter.
+  // Only transitions repaint the information region; the title is independent.
+  TrackerCommand command = TrackerCommand::InstrumentCommandNone;
+  if (IsButtonHeld(EPBM_ENTER) && col_ >= 0 && col_ <= 5) {
+    const Table &table =
         TableHolder::GetInstance()->GetTable(viewData_->currentTable_);
-    TrackerCommand cmd = table.cmd1_[row_];
-    if (col_ >= 2 && col_ <= 3) {
-      cmd = table.cmd2_[row_];
-    }
-    if (col_ >= 4 && col_ <= 5) {
-      cmd = table.cmd3_[row_];
-    }
-    printHelpLegend(cmd, props);
+    command = col_ < 2   ? table.cmd1_[row_]
+              : col_ < 4 ? table.cmd2_[row_]
+                         : table.cmd3_[row_];
+  }
+  const auto helpChange =
+      commandHelp_.Update(IsButtonHeld(EPBM_ENTER), command);
+  if (helpChange == CommandHelpState::Change::Show) {
+    GUITextProperties props;
+    printHelpLegend(TEXT_REGION_INFO, command, props);
+  } else if (helpChange == CommandHelpState::Change::Hide) {
+    const TextRegionInfo *info =
+        static_cast<AppWindow &>(w_).GetTextRegion(TEXT_REGION_INFO);
+    if (info)
+      ClearRegionTextRect(TEXT_REGION_INFO, 0, 0, info->columns, info->rows);
   }
 
   // Get player instance safely
@@ -1121,6 +1128,8 @@ void TableView::AnimationUpdate() {
   if (!viewData_ || !player || !th) {
     return;
   }
+
+  drawMasterVuMeter(player, GUITextProperties{});
 
   // Handle any pending updates from OnPlayerUpdate using the consolidated flag
   // This ensures all UI drawing happens on the "main" thread (core0)
@@ -1139,7 +1148,7 @@ void TableView::AnimationUpdate() {
       pos._x = anchor._x - 1 + (i * 9);
       for (int row = 0; row < 16; row++) {
         pos._y = anchor._y + row;
-        DrawString(pos._x, pos._y, " ", props);
+        DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, " ", props);
       }
     }
 
@@ -1159,7 +1168,7 @@ void TableView::AnimationUpdate() {
             if (yPos >= 0 && yPos < 16) {
               pos._x = anchor._x - 1 + (i * 9);
               pos._y = anchor._y + yPos;
-              DrawString(pos._x, pos._y, ">", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, ">", props);
             }
           }
         }
@@ -1169,7 +1178,7 @@ void TableView::AnimationUpdate() {
             if (yPos >= 0 && yPos < 16) {
               pos._x = anchor._x - 1 + (i * 9);
               pos._y = anchor._y + yPos;
-              DrawString(pos._x, pos._y, ">", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, ">", props);
             }
           }
         }

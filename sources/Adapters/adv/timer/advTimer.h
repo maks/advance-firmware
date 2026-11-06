@@ -11,6 +11,7 @@
 #include "FreeRTOS.h"
 #include "System/Timer/Timer.h"
 #include "timers.h"
+#include <cstddef>
 
 class advTimer : public I_Timer {
 public:
@@ -35,6 +36,17 @@ class advTimerService : public TimerService {
 public:
   virtual I_Timer *CreateTimer(); // Returns a timer
   virtual void TriggerCallback(int msec, timerCallback cb);
+
+private:
+  struct TriggerCallbackContext {
+    StaticTimer_t timerStorage{};
+    TimerHandle_t timer = nullptr;
+    timerCallback callback = nullptr;
+  };
+
+  static constexpr std::size_t kTriggerCallbackCount = 8;
+  static void TriggerCallbackTimer(TimerHandle_t timer);
+  TriggerCallbackContext triggerCallbacks_[kTriggerCallbackCount]{};
 };
 
 #endif

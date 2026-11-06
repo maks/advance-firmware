@@ -61,7 +61,6 @@ private:
   void resetLedCache();
 
   void handleFaderMove(int faderIndex, uint8_t value);
-  void updateProjectMixerFader(int faderIndex, uint8_t value);
   uint8_t velocityForPackedRgb(uint32_t rgb) const;
   void setTrackLed(int channel, uint8_t value);
   void setSceneLed(int row, uint8_t value);
@@ -83,6 +82,12 @@ private:
   }
 
 private:
+  struct FaderPickupState {
+    int32_t previousVolume = -1;
+    int32_t lastWrittenValue = -1;
+    bool pickedUp = false;
+  };
+
   bool introduced_;
   bool shiftHeld_;
   bool baseGridColorsCached_;
@@ -94,4 +99,5 @@ private:
   uint8_t gridLedBehavior_[kApcButtonCount][kApcButtonCount];
   uint8_t trackLedValue_[kApcButtonCount];
   uint8_t sceneLedValue_[kApcButtonCount];
+  FaderPickupState faderPickup_[kApcFaderCount];
 };

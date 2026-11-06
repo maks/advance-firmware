@@ -1,12 +1,13 @@
 ---
-title: Credits
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause
 
 -->
 
+
+title: Credits
+template: page
+---
 
 # picoTracker Advance
 

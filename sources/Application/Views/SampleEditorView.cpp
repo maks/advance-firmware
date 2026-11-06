@@ -96,6 +96,12 @@ bool pathIsWithinDirectory(const char *path, const char *directory) {
 
 } // namespace
 
+GraphicsLayout SampleEditorView::GetGraphicsLayout() {
+  static constexpr GraphicsRegion regions[] = {
+      {GraphXOffset, GraphYOffset, 660, 180}};
+  return {regions, 1};
+}
+
 SampleEditorView::SampleEditorView(GUIWindow &w, ViewData *data)
     : FieldView(w, data), fullWaveformRedraw_(false), isPlaying_(false),
       isSingleCycle_(false), playKeyHeld_(false), playbackPosition_(0.0f),
@@ -131,7 +137,7 @@ void SampleEditorView::Reset() {
   tempSampleSize_ = 0;
   headerInfo_ = WavHeaderInfo{};
   headerValid_ = false;
-  modalClearCount_ = 0;
+
   filename.clear();
   filenameVar_.SetString("", false);
   workingFilename_.clear();
@@ -384,7 +390,7 @@ void SampleEditorView::addAllFields() {
 
   GUIPoint position = GetAnchor();
 
-  position._y = 10; // offset enough for waveform display
+  position._y = 9; // offset enough for waveform display
   position._x = 5;
 
   auto label =
@@ -663,32 +669,13 @@ void SampleEditorView::DrawView() {
 
   setTitle(etl::string<23>("Sample Edit"));
 
-  if (HasModalView()) {
-    // Modal rendering only clears text cells. Avoid redrawing the graph field
-    // border behind the modal while it is active.
-    if (GetFocus() == 0 && !fieldList_.empty()) {
-      SetFocus(*fieldList_.begin());
-    }
-    for (auto it = fieldList_.begin(); it != fieldList_.end(); ++it) {
-      if (*it == &graphField_) {
-        continue;
-      }
-      (*it)->Draw(w_);
-    }
-  } else {
-    // Let the base class draw all fields, including graph frame.
-    FieldView::Redraw();
-  }
+  // Borders and graph columns now route beneath modals like other pixels.
+  FieldView::Redraw();
   isDirty_ = true;
 }
 
 void SampleEditorView::DrawWaveForm() {
-  // Avoid drawing markers while a modal is on-screen; the modal redraw logic
-  // only clears the text grid so we must not repaint the pixel buffer behind
-  // it.
-  if (HasModalView()) {
-    return;
-  }
+  // Marker updates continue into live backing while a modal covers the graph.
   if (fullWaveformRedraw_) {
     fullWaveformRedraw_ = false;
     graphField_.RequestFullRedraw();
@@ -892,25 +879,10 @@ void SampleEditorView::AnimationUpdate() {
   // Check if we need to update the waveform display
   DrawWaveForm();
 
-  // we need this hack because Modal Dialogs text buffer gets repainted after
-  // the dialog is dismissed by "clearing" the text grid where it was, ie.
-  // setting every grid position to a space char with its background set to
-  // background color but this means we need to have the waveform, which draws
-  // directly to pixel buffer repaint itself for *2* frames to ensure it paints
-  // over the space chars that are drawn in the first frame after the dialog is
-  // dismissed
-  if (modalClearCount_ > 0) {
-    fullWaveformRedraw_ = true;
-    // Redraw full fields for two frames as well so GraphField border pixels
-    // that got cleared by modal text cleanup are restored.
-    isDirty_ = true;
-    ((AppWindow &)w_).SetDirty();
-    DrawWaveForm();
-    modalClearCount_--;
-  }
+  // Modal text has its own cache; restoration needs no two-frame graph repaint.
 
   GUITextProperties props;
-  drawTitlebar(props);
+  drawTitlebar(TEXT_REGION_HEADER, props);
   drawPowerButtonUI(props);
 }
 
@@ -942,10 +914,8 @@ void SampleEditorView::Update(Observable &o, I_ObservableData *d) {
         MessageBox::Create(*this, confirmLine.c_str(), "Saved only after Save",
                            MBBF_YES | MBBF_NO);
 
-    // Modal cannot properly draw over the waveform gfx area because text
-    // drawing doesn't know the area because ClearTextRect() is not yet
-    // implemented so we need to manually clear the waveform drawing
-    clearWaveformRegion();
+    // The overlay captures the current waveform; do not erase it before
+    // opening.
 
     DoModal(
         mb,
@@ -991,7 +961,6 @@ void SampleEditorView::onConfirmApplyOperation(View &, ModalView &dialog) {
     if (!applySelectedOperation()) {
       MessageBox *error =
           MessageBox::Create(*this, "Operation failed", MBBF_OK);
-      clearWaveformRegion();
       DoModal(
           error,
           ModalViewCallback::create<SampleEditorView,
@@ -999,7 +968,7 @@ void SampleEditorView::onConfirmApplyOperation(View &, ModalView &dialog) {
               *this));
     }
   }
-  modalClearCount_ = 2;
+
   isDirty_ = true;
 }
 
@@ -1012,17 +981,16 @@ void SampleEditorView::onConfirmOverwriteSave(View &, ModalView &dialog) {
     return;
   }
 
-  modalClearCount_ = 2;
   isDirty_ = true;
 }
 
 void SampleEditorView::onOperationFailedAck(View &, ModalView &) {
-  modalClearCount_ = 2;
+
   isDirty_ = true;
 }
 
 void SampleEditorView::onSimpleModalDismiss(View &, ModalView &) {
-  modalClearCount_ = 2;
+
   isDirty_ = true;
 }
 
@@ -1330,7 +1298,6 @@ void SampleEditorView::attemptSave(bool loadToPool) {
     MessageBox *confirmBox =
         MessageBox::Create(*this, "Overwrite existing sample?",
                            filename.c_str(), MBBF_OK | MBBF_CANCEL);
-    clearWaveformRegion();
     DoModal(
         confirmBox,
         ModalViewCallback::create<SampleEditorView,
@@ -1371,7 +1338,6 @@ void SampleEditorView::confirmSave(bool loadToPool) {
 void SampleEditorView::showSaveFailedDialog() {
   MessageBox *errorBox = MessageBox::Create(*this, "Save Failed",
                                             "Unable to save sample", MBBF_OK);
-  clearWaveformRegion();
   DoModal(errorBox,
           ModalViewCallback::create<SampleEditorView,
                                     &SampleEditorView::onSimpleModalDismiss>(
@@ -1381,7 +1347,6 @@ void SampleEditorView::showSaveFailedDialog() {
 void SampleEditorView::showLoadToPoolFailedDialog() {
   MessageBox *errorBox =
       MessageBox::Create(*this, "Sample saved", "Pool load failed", MBBF_OK);
-  clearWaveformRegion();
   DoModal(errorBox,
           ModalViewCallback::create<SampleEditorView,
                                     &SampleEditorView::onSimpleModalDismiss>(
@@ -1640,13 +1605,4 @@ void SampleEditorView::loadSample(const etl::string<PFILENAME_SIZE> filename) {
   Trace::Log("SAMPLEEDITOR", "Loaded %d frames from %s", tempSampleSize_,
              filename.c_str());
   fullWaveformRedraw_ = true;
-}
-
-void SampleEditorView::clearWaveformRegion() {
-  // Clear the entire waveform area
-  GUIRect rrect;
-  rrect = GUIRect(GraphXOffset, GraphYOffset,
-                  GraphXOffset + GraphField::BitmapWidth,
-                  GraphYOffset + GraphField::BitmapHeight);
-  DrawRect(rrect, CD_BACKGROUND);
 }

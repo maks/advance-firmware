@@ -1,7 +1,4 @@
 ---
-title: Project Pool
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause AND GPL-3.0-only
 
@@ -12,6 +9,10 @@ New original contributions by xiphonics, inc. are GPL-3.0-only.
 Previously granted BSD permissions are preserved. See LICENSING.md.
 -->
 
+
+title: Project Pool
+template: page
+---
 
 ![screen capture of project pool screen](image/projectpool-screen-small.png)
 

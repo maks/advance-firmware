@@ -10,16 +10,11 @@
 #include "System/Console/Trace.h"
 #include "System/Console/n_assert.h"
 #include "System/System/System.h"
+#include "task.h"
 
 int64_t advTimerCallback(int32_t interval, void *param) {
   advTimer *timer = (advTimer *)param;
   return timer->OnTimerTick();
-};
-
-int64_t advTriggerCallback(int32_t interval, void *param) {
-  timerCallback tc = (timerCallback)param;
-  (*tc)();
-  return 0;
 };
 
 advTimer::advTimer() {
@@ -96,6 +91,69 @@ I_Timer *advTimerService::CreateTimer() {
 };
 
 void advTimerService::TriggerCallback(int msec, timerCallback cb) {
-  // TODO(stm): reenable this!
-  //  add_alarm_in_ms(msec, advTriggerCallback, (void *)cb, false);
+  if (cb == nullptr) {
+    Trace::Error("ADV_TIMER", "one-shot callback is null");
+    return;
+  }
+
+  TickType_t period = pdMS_TO_TICKS(msec > 0 ? msec : 1);
+  if (period == 0) {
+    period = 1;
+  }
+
+  for (auto &context : triggerCallbacks_) {
+    taskENTER_CRITICAL();
+    const bool available = context.callback == nullptr;
+    if (available) {
+      context.callback = cb;
+    }
+    taskEXIT_CRITICAL();
+
+    if (!available) {
+      continue;
+    }
+
+    if (context.timer == nullptr) {
+      context.timer =
+          xTimerCreateStatic("advCallback", period, pdFALSE, &context,
+                             TriggerCallbackTimer, &context.timerStorage);
+    }
+
+    if (context.timer == nullptr ||
+        xTimerChangePeriod(context.timer, period, pdMS_TO_TICKS(10)) !=
+            pdPASS) {
+      taskENTER_CRITICAL();
+      context.callback = nullptr;
+      taskEXIT_CRITICAL();
+      Trace::Error("ADV_TIMER", "failed to schedule one-shot callback");
+      cb();
+      return;
+    }
+
+    return;
+  }
+
+  Trace::Error("ADV_TIMER", "one-shot callback slots exhausted");
+  cb();
+}
+
+void advTimerService::TriggerCallbackTimer(TimerHandle_t timer) {
+  auto *context =
+      static_cast<TriggerCallbackContext *>(pvTimerGetTimerID(timer));
+  if (context == nullptr) {
+    return;
+  }
+
+  // Keep the slot reserved until the callback returns, so another request
+  // cannot reuse its context while it is still executing.
+  taskENTER_CRITICAL();
+  timerCallback callback = context->callback;
+  taskEXIT_CRITICAL();
+  if (callback != nullptr) {
+    callback();
+  }
+
+  taskENTER_CRITICAL();
+  context->callback = nullptr;
+  taskEXIT_CRITICAL();
 }

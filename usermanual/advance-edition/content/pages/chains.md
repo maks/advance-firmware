@@ -1,7 +1,4 @@
 ---
-title: Chain Screen
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause AND GPL-3.0-only
 
@@ -12,6 +9,10 @@ New original contributions by xiphonics, inc. are GPL-3.0-only.
 Previously granted BSD permissions are preserved. See LICENSING.md.
 -->
 
+
+title: Chain Screen
+template: page
+---
 
 ![screen capture of chain screen](image/chain-screen-small.png)
 

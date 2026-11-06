@@ -25,9 +25,15 @@ constexpr int32_t SliceXOffset = SampleSlicer::GraphXOffset;
 constexpr int32_t SliceYOffset = 2 * CHAR_HEIGHT;
 } // namespace
 
+GraphicsLayout SampleSlicesView::GetGraphicsLayout() {
+  static constexpr GraphicsRegion regions[] = {
+      {SliceXOffset, SliceYOffset, 660, 180}};
+  return {regions, 1};
+}
+
 SampleSlicesView::SampleSlicesView(GUIWindow &w, ViewData *data)
-    : FieldView(w, data), needsFullRedraw_(true), modalWasOpen_(false),
-      slicer_({GUIPoint(SliceXOffset, SliceYOffset), GUIPoint(1, 8), true, true,
+    : FieldView(w, data), needsFullRedraw_(true),
+      slicer_({GUIPoint(SliceXOffset, SliceYOffset), GUIPoint(1, 7), true, true,
                true, true}) {
   slicer_.AddObserver(*this);
 }
@@ -36,14 +42,14 @@ SampleSlicesView::~SampleSlicesView() { slicer_.Reset(); }
 
 void SampleSlicesView::Reset() {
   slicer_.Reset();
-  modalWasOpen_ = false;
+
   needsFullRedraw_ = true;
 }
 
 void SampleSlicesView::OnFocus() {
   slicer_.Attach(currentInstrument(),
                  static_cast<int32_t>(viewData_->currentInstrumentID_));
-  modalWasOpen_ = false;
+
   needsFullRedraw_ = true;
   buildFieldLayout();
   isDirty_ = true;
@@ -88,40 +94,17 @@ void SampleSlicesView::DrawView() {
   // Draw title
   setTitle(etl::string<23>("Sample Slices"));
 
-  bool hasModal = HasModalView();
-  if (!hasModal) {
-    slicer_.Draw(*this);
-    ClearTextRect(0, 9, SCREEN_WIDTH, 3);
-  }
-
-  if (hasModal) {
-    if (GetFocus() == 0 && !fieldList_.empty()) {
-      SetFocus(*fieldList_.begin());
-    }
-    for (auto it = fieldList_.begin(); it != fieldList_.end(); ++it) {
-      if (*it == slicer_.GraphFieldControl()) {
-        continue;
-      }
-      (*it)->Draw(w_);
-    }
-  } else {
-    FieldView::Redraw();
-  }
+  slicer_.Draw(*this);
+  ClearRegionTextRect(TEXT_REGION_BODY, 0, 8, SCREEN_WIDTH, 3);
+  FieldView::Redraw();
   needsFullRedraw_ = false;
 }
 
 void SampleSlicesView::AnimationUpdate() {
   GUITextProperties props;
-  drawTitlebar(props);
+  drawTitlebar(TEXT_REGION_HEADER, props);
   drawPowerButtonUI(props);
 
-  bool hasModal = HasModalView();
-  if (modalWasOpen_ && !hasModal) {
-    slicer_.Graph().RequestFullRedraw();
-    isDirty_ = true;
-    ((AppWindow &)w_).SetDirty();
-  }
-  modalWasOpen_ = hasModal;
   slicer_.AnimationUpdate(*this);
   if (isDirty_) {
     ((AppWindow &)w_).SetDirty();
@@ -138,9 +121,6 @@ void SampleSlicesView::Update(Observable &, I_ObservableData *data) {
     if (slicer_.HasSlicesForPlayback()) {
       MessageBox *mb = MessageBox::Create(*this, "Replace current slices?",
                                           MBBF_YES | MBBF_NO);
-      slicer_.MarkModalRecovery(0);
-      slicer_.ClearWaveformRegion(*this);
-      ((AppWindow &)w_).InvalidateTextCache();
       DoModal(mb, ModalViewCallback::create<
                       &SampleSlicesView::AutoSliceConfirmCallback>());
     } else {
@@ -163,7 +143,6 @@ void SampleSlicesView::buildFieldLayout() {
 
 void SampleSlicesView::AutoSliceConfirmCallback(View &view, ModalView &dialog) {
   auto &self = static_cast<SampleSlicesView &>(view);
-  self.slicer_.MarkModalRecovery(2);
   self.isDirty_ = true;
   ((AppWindow &)self.w_).SetDirty();
   if (dialog.GetReturnCode() == MBL_YES) {

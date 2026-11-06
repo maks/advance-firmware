@@ -14,10 +14,165 @@
 
 #include "Adapters/adv/system/i2cTransfer.h"
 #include "System/Console/Trace.h"
+#include "System/System/BatteryGaugeType.h"
 #include "platform.h"
 
 // bq27441-G1 I2C address (7-bit address: 0x55)
 #define BQ27441_I2C_ADDR 0x55
+
+#define BQ27220_DEVICE_NUMBER 0x0220
+#define BQ27220_CONTROL_STATUS_PENDING 0xFFA5
+#define BQ27441_DEVICE_TYPE 0x0421
+#define BQ27220_CMD_TEMP 0x06
+#define BQ27220_CMD_VOLTAGE 0x08
+#define BQ27220_CMD_CURRENT 0x0C
+#define BQ27220_CMD_SOC 0x2C
+#define BQ27220_CMD_SOH 0x2E
+
+BatteryGaugeType batteryGaugeType = BatteryGaugeType::Unknown;
+void busywait(uint32_t delay);
+static bool configureBQ27441();
+static int8_t readBQ27441SOC();
+static uint32_t readBQ27441Voltage();
+static int32_t readBQ27441Temperature();
+static int16_t readBQ27441Current();
+static SOHT readBQ27441StateOfHealthType();
+static int16_t readBQ27441StateOfHealth();
+
+static bool writeGaugeControl(uint16_t subcommand) {
+  uint8_t data[3] = {0x00, static_cast<uint8_t>(subcommand & 0xFF),
+                     static_cast<uint8_t>(subcommand >> 8)};
+  return AdvI2C_Master_Transmit(&hi2c4, BQ27441_I2C_ADDR << 1, data, 3,
+                                I2C_TRANSFER_TIMEOUT_MS) == HAL_OK;
+}
+
+static bool readGaugeWord(uint8_t command, uint16_t &value) {
+  uint8_t data[2] = {0};
+  HAL_StatusTypeDef status = AdvI2C_Master_Transmit(
+      &hi2c4, BQ27441_I2C_ADDR << 1, &command, 1, I2C_TRANSFER_TIMEOUT_MS);
+  // BQ27220 TRM section 5.3 requires at least 66 us between packets.
+  // Two millisecond ticks guarantee a full tick even near a tick boundary.
+  busywait(2);
+  if (status != HAL_OK) {
+    return false;
+  }
+  status = AdvI2C_Master_Receive(&hi2c4, BQ27441_I2C_ADDR << 1, data, 2,
+                                 I2C_TRANSFER_TIMEOUT_MS);
+  // Pace the next transaction even when this receive fails.
+  busywait(2);
+  if (status != HAL_OK) {
+    return false;
+  }
+  value =
+      static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
+  return true;
+}
+
+static BatteryGaugeType identifyBatteryGaugeOnce() {
+  uint16_t response = 0;
+  if (!writeGaugeControl(0x0001)) {
+    return BatteryGaugeType::Unknown;
+  }
+  busywait(2);
+  if (!readGaugeWord(0x00, response)) {
+    return BatteryGaugeType::Unknown;
+  }
+  if (response == BQ27441_DEVICE_TYPE) {
+    return BatteryGaugeType::BQ27441;
+  }
+  if (response != BQ27220_CONTROL_STATUS_PENDING) {
+    return BatteryGaugeType::Unknown;
+  }
+
+  if (!readGaugeWord(0x40, response) || response != BQ27220_DEVICE_NUMBER) {
+    return BatteryGaugeType::Unknown;
+  }
+  return BatteryGaugeType::BQ27220;
+}
+
+static BatteryGaugeType identifyBatteryGauge() {
+  for (uint8_t attempt = 0; attempt < 2; ++attempt) {
+    const BatteryGaugeType first = identifyBatteryGaugeOnce();
+    if (first != BatteryGaugeType::Unknown &&
+        identifyBatteryGaugeOnce() == first) {
+      return first;
+    }
+    // Allow a transient startup I2C failure to recover before retrying.
+    busywait(2);
+  }
+  return BatteryGaugeType::Unknown;
+}
+
+class BatteryGauge {
+public:
+  virtual bool configure() = 0;
+  virtual int8_t stateOfCharge() = 0;
+  virtual uint32_t voltage() = 0;
+  virtual int32_t temperature() = 0;
+  virtual int16_t current() = 0;
+  virtual SOHT stateOfHealthType() = 0;
+  virtual int16_t stateOfHealth() = 0;
+};
+
+class BQ27441Gauge final : public BatteryGauge {
+public:
+  bool configure() override { return configureBQ27441(); }
+  int8_t stateOfCharge() override { return readBQ27441SOC(); }
+  uint32_t voltage() override { return readBQ27441Voltage(); }
+  int32_t temperature() override { return readBQ27441Temperature(); }
+  int16_t current() override { return readBQ27441Current(); }
+  SOHT stateOfHealthType() override { return readBQ27441StateOfHealthType(); }
+  int16_t stateOfHealth() override { return readBQ27441StateOfHealth(); }
+};
+
+class BQ27220Gauge final : public BatteryGauge {
+public:
+  bool configure() override {
+    Trace::Log("BATTERY", "Detected BQ27220 fuel gauge");
+    // Preserve the existing CEDV data-memory profile. It differs from the
+    // BQ27441 configuration and must be provisioned for the installed cell.
+    return true;
+  }
+  int8_t stateOfCharge() override {
+    uint16_t value = 0;
+    return readGaugeWord(BQ27220_CMD_SOC, value) && value <= 100
+               ? static_cast<int8_t>(value)
+               : -1;
+  }
+  uint32_t voltage() override {
+    uint16_t value = 0;
+    return readGaugeWord(BQ27220_CMD_VOLTAGE, value)
+               ? value
+               : static_cast<uint32_t>(-1);
+  }
+  int32_t temperature() override {
+    uint16_t value = 0;
+    return readGaugeWord(BQ27220_CMD_TEMP, value)
+               ? (static_cast<int32_t>(value) - 2731) / 10
+               : -273;
+  }
+  int16_t current() override {
+    uint16_t value = 0;
+    return readGaugeWord(BQ27220_CMD_CURRENT, value)
+               ? static_cast<int16_t>(value)
+               : CURRENT_READ_ERROR;
+  }
+  SOHT stateOfHealthType() override {
+    // BQ27220 exposes a percentage word without a separate SOHT register
+    // (TRM section 2.22). Let stateOfHealth() validate the read and value.
+    return SOH_READY;
+  }
+  int16_t stateOfHealth() override {
+    uint16_t value = 0;
+    return readGaugeWord(BQ27220_CMD_SOH, value) && value <= 100
+               ? static_cast<int16_t>(value)
+               : -1;
+  }
+};
+
+static BQ27441Gauge bq27441Gauge;
+static BQ27220Gauge bq27220Gauge;
+static BatteryGauge *activeBatteryGauge = nullptr;
 
 // Control commands
 #define BQ27441_CONTROL_CMD 0x00
@@ -87,7 +242,7 @@ void busywait(uint32_t delay) {
 }
 
 // Battery gauge configuration
-bool configureBatteryGauge() {
+static bool configureBQ27441() {
   HAL_StatusTypeDef status;
   uint8_t txBuf[4] = {0};
   uint8_t rxBuf[2] = {0};
@@ -542,7 +697,7 @@ bool configureBatteryGauge() {
 // Read battery state of charge using I2C from bq27441-G1 fuel gauge
 // returns percentage of battery charge
 // return < 0 on error
-int8_t getBatterySOC() {
+static int8_t readBQ27441SOC() {
   uint8_t cmdBuf[1] = {BQ27441_CMD_VOLTAGE}; // Command to read voltage
   uint8_t rxData[2] = {0};
 
@@ -578,7 +733,7 @@ int8_t getBatterySOC() {
   return batterySOC;
 }
 
-uint32_t getBatteryVoltage() {
+static uint32_t readBQ27441Voltage() {
   uint8_t cmdBuf[1] = {BQ27441_CMD_VOLTAGE}; // Command to read voltage
   uint8_t rxData[2] = {0};
   int batteryVoltage = 0;
@@ -613,7 +768,7 @@ uint32_t getBatteryVoltage() {
 }
 
 // returns temperature in degrees Celsius
-int32_t getBatteryTemperature() {
+static int32_t readBQ27441Temperature() {
   // Read the temperature from the BQ27441 battery gauge
   // Temperature is stored in the TEMP register (0x02)
   // The value is returned in units of 0.1K
@@ -654,7 +809,7 @@ int32_t getBatteryTemperature() {
   return temperature;
 }
 
-int16_t getBatteryCurrent() {
+static int16_t readBQ27441Current() {
   // Because the DSG doesn't seem to give the correct charging state, we use the
   // current measurement to determine charging status Positive current indicates
   // charging, negative current indicates discharging
@@ -688,7 +843,7 @@ int16_t getBatteryCurrent() {
   return current;
 }
 
-SOHT getBatteryStateOfHealthType() {
+static SOHT readBQ27441StateOfHealthType() {
   HAL_StatusTypeDef status;
   uint8_t txData[1] = {BQ27441_CMD_SOHT};
   uint8_t rxData[2] = {0}; // register is 16 bit
@@ -716,7 +871,7 @@ SOHT getBatteryStateOfHealthType() {
   return (SOHT)rxData[0];
 }
 
-int16_t getBatteryStateOfHealth() {
+static int16_t readBQ27441StateOfHealth() {
   HAL_StatusTypeDef status;
   uint8_t txData[1] = {BQ27441_CMD_SOH};
   uint8_t rxData[2] = {0}; // register is 16 bit
@@ -742,4 +897,62 @@ int16_t getBatteryStateOfHealth() {
   }
 
   return rxData[0];
+}
+
+bool configureBatteryGauge() {
+  batteryGaugeType = identifyBatteryGauge();
+  switch (batteryGaugeType) {
+  case BatteryGaugeType::BQ27441:
+    activeBatteryGauge = &bq27441Gauge;
+    Trace::Log("BATTERY", "Detected BQ27441 fuel gauge");
+    break;
+  case BatteryGaugeType::BQ27220:
+    activeBatteryGauge = &bq27220Gauge;
+    break;
+  case BatteryGaugeType::Unknown:
+  default:
+    activeBatteryGauge = nullptr;
+    Trace::Error("Unable to identify battery gauge at I2C address 0x55");
+    return false;
+  }
+  return activeBatteryGauge->configure();
+}
+
+const char *getBatteryGaugeCode() {
+  switch (batteryGaugeType) {
+  case BatteryGaugeType::BQ27441:
+    return "27441";
+  case BatteryGaugeType::BQ27220:
+    return "27220";
+  case BatteryGaugeType::Unknown:
+  default:
+    return "UKN";
+  }
+}
+
+int8_t getBatterySOC() {
+  return activeBatteryGauge ? activeBatteryGauge->stateOfCharge() : -1;
+}
+
+uint32_t getBatteryVoltage() {
+  return activeBatteryGauge ? activeBatteryGauge->voltage()
+                            : static_cast<uint32_t>(-1);
+}
+
+int32_t getBatteryTemperature() {
+  return activeBatteryGauge ? activeBatteryGauge->temperature() : -273;
+}
+
+int16_t getBatteryCurrent() {
+  return activeBatteryGauge ? activeBatteryGauge->current()
+                            : CURRENT_READ_ERROR;
+}
+
+SOHT getBatteryStateOfHealthType() {
+  return activeBatteryGauge ? activeBatteryGauge->stateOfHealthType()
+                            : SOH_NOT_VALID;
+}
+
+int16_t getBatteryStateOfHealth() {
+  return activeBatteryGauge ? activeBatteryGauge->stateOfHealth() : -1;
 }

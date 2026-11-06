@@ -1,4 +1,6 @@
 build**
+!tools/build-wasm.sh
+!docs/wasm/BUILD.md
 ref/**
 doxygen/html/**
 projects/buildOSX/**
@@ -40,5 +42,11 @@ usermanual/web
 
 optbuild/**
 AGENTS.md
+.tokensave/
 sources/.cache/**
 tests/.cache/**
+web/node_modules/
+web/dist/
+web/playwright-report/
+web/test-results/
+web/public/wasm/*

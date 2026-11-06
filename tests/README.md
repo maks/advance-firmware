@@ -9,7 +9,6 @@ Previously granted BSD permissions are preserved. See LICENSING.md.
 -->
 
 # Host Tests
-
 This directory contains host-side unit and integration tests for the `picoTracker` project. The tests use the `doctest` framework and are designed to run on your development machine (host) rather than the target STM32 hardware.
 
 ## Building the Tests

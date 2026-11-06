@@ -4,9 +4,6 @@
  * Copyright (c) 2026 xiphonics, inc.
  */
 
-/*
- * Minimal host-test stub for PersistencyService path-boundary tests.
- */
 #ifndef _I_INSTRUMENT_H_
 #define _I_INSTRUMENT_H_
 

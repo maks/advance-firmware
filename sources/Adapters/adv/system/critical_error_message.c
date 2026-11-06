@@ -47,8 +47,8 @@ static void draw_error_screen_text_line(uint8_t row, uint8_t fgColor,
   display_set_foreground((color_t)fgColor);
   for (uint8_t col = 0; col < ERROR_SCREEN_TEXT_COLUMNS && buffer[col] != '\0';
        col++) {
-    display_set_cursor(col, row);
-    display_putc(buffer[col], false);
+    display_putc_region(row == 0 ? 0 : 1, col, row == 0 ? 0 : row - 1,
+                        buffer[col], false);
   }
 }
 
@@ -57,13 +57,17 @@ static void draw_error_screen(const ErrorBitmap *bitmap, const char *title,
                               size_t detailLineCount) {
   uint8_t currentRow = 0;
 
-  display_set_font_index(0);
-
   display_set_palette_color(COLOR_WHITE, 0xFFFF);    // WHITE
   display_set_palette_color(COLOR_GURU_TXT, 0xF800); // RED
   display_set_palette_color(COLOR_GURU_BG, 0x0000);  // BLACK
   display_set_background(COLOR_WHITE);
   display_set_foreground(COLOR_GURU_BG);
+  // Fault handling owns an independent emergency layout. It must work before
+  // application views exist, and cannot rely on the layout of the failed view.
+  static const TextRegion errorRegions[] = {
+      {8, 4, 704, 24, TEXT_FONT_SMALL}, {8, 30, 704, 690, TEXT_FONT_NORMAL}};
+  display_configure_text_regions(errorRegions, 2);
+  display_configure_graphics((GraphicsLayout){NULL, 0});
   display_clear(COLOR_WHITE);
 
   if (bitmap) {

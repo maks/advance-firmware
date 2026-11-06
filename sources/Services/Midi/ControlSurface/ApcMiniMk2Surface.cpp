@@ -232,6 +232,9 @@ bool ApcMiniMk2Surface::Init(MidiService &midiService) {
   introduced_ = false;
   shiftHeld_ = false;
   baseGridColorsCached_ = false;
+  for (auto &state : faderPickup_) {
+    state = {};
+  }
   resetLedCache();
   return true;
 }
@@ -543,6 +546,9 @@ bool ApcMiniMk2Surface::isShiftButton(int note) const {
 }
 
 void ApcMiniMk2Surface::OnSurfaceStopped() {
+  for (auto &state : faderPickup_) {
+    state = {};
+  }
   clearAllLeds(true);
   introduced_ = false;
   shiftHeld_ = false;
@@ -620,35 +626,45 @@ void ApcMiniMk2Surface::resetLedCache() {
 }
 
 void ApcMiniMk2Surface::handleFaderMove(int faderIndex, uint8_t value) {
-  updateProjectMixerFader(faderIndex, value);
-  MarkLedsDirty();
-  RefreshLeds();
-}
-
-void ApcMiniMk2Surface::updateProjectMixerFader(int faderIndex, uint8_t value) {
-  Player *player = GetPlayer();
-  Project *project = (player != nullptr) ? player->GetProject() : nullptr;
-  if ((project == nullptr) || (faderIndex < 0) ||
-      (faderIndex >= kApcFaderCount)) {
+  if ((faderIndex < 0) || (faderIndex >= kApcFaderCount)) {
     return;
   }
 
-  Variable *variable = nullptr;
-  int scaledValue = 0;
-
-  if (faderIndex < kApcButtonCount) {
-    variable = project->FindVariable(GetChannelVolumeFourCC(faderIndex));
-    scaledValue = scaleMidiValue(value, 99);
-  } else {
-    variable = project->FindVariable(FourCC::VarMasterVolume);
-    scaledValue = scaleMidiValue(value, 100);
+  Player *player = GetPlayer();
+  Project *project = (player != nullptr) ? player->GetProject() : nullptr;
+  if (project == nullptr) {
+    return;
   }
 
-  if (variable != nullptr) {
-    variable->SetInt(scaledValue);
-    if (AppWindow *appWindow = AppWindow::GetInstance()) {
-      appWindow->SetMixerViewDirty();
-    }
+  Variable *variable = project->FindVariable(
+      (faderIndex < kApcButtonCount) ? GetChannelVolumeFourCC(faderIndex)
+                                     : FourCC::VarMasterVolume);
+  if (variable == nullptr) {
+    return;
+  }
+
+  const int32_t volume = scaleMidiValue(value, Project::MixerVolumeMaximum);
+  const int32_t target = variable->GetInt();
+  FaderPickupState &state = faderPickup_[faderIndex];
+
+  // A volume change from another control requires pickup again.
+  if (target != state.lastWrittenValue) {
+    state.pickedUp = false;
+  }
+  if (volume == target || (state.previousVolume >= 0 &&
+                           target >= std::min(state.previousVolume, volume) &&
+                           target <= std::max(state.previousVolume, volume))) {
+    state.pickedUp = true;
+  }
+  state.previousVolume = volume;
+  if (!state.pickedUp) {
+    return;
+  }
+
+  variable->SetInt(volume);
+  state.lastWrittenValue = volume;
+  if (AppWindow *appWindow = AppWindow::GetInstance()) {
+    appWindow->SetMixerViewDirty();
   }
 }
 

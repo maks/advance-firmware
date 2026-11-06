@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  *
  */
+#include "Adapters/adv/usb/usb_audio_handoff.h"
 #include "serial.h"
 #include "tusb.h"
 
@@ -37,6 +38,43 @@
  */
 #define _PID_MAP(itf, n) ((CFG_TUD_##itf) << (n))
 #define USB_PID 0x6192
+
+// UAC2 source topology: internal stereo master mix to the USB streaming
+// terminal, driven by a fixed 44.1 kHz clock.
+#define TUD_AUDIO_MASTER_DESCRIPTOR(_itf, _stridx, _epin, _epsize)             \
+  TUD_AUDIO_DESC_IAD(_itf, 0x02, _stridx),                                     \
+      TUD_AUDIO_DESC_STD_AC(_itf, 0x00, _stridx),                              \
+      TUD_AUDIO_DESC_CS_AC(0x0200, AUDIO_FUNC_PRO_AUDIO,                       \
+                           TUD_AUDIO_DESC_CLK_SRC_LEN +                        \
+                               TUD_AUDIO_DESC_INPUT_TERM_LEN +                 \
+                               TUD_AUDIO_DESC_OUTPUT_TERM_LEN,                 \
+                           AUDIO_CS_AS_INTERFACE_CTRL_LATENCY_POS),            \
+      TUD_AUDIO_DESC_CLK_SRC(                                                  \
+          0x04, AUDIO_CLOCK_SOURCE_ATT_INT_FIX_CLK,                            \
+          AUDIO_CTRL_R << AUDIO_CLOCK_SOURCE_CTRL_CLK_FRQ_POS, 0x01, 0x00),    \
+      TUD_AUDIO_DESC_INPUT_TERM(                                               \
+          0x01, AUDIO_TERM_TYPE_IN_UNDEFINED, 0x03, 0x04, 0x02,                \
+          AUDIO_CHANNEL_CONFIG_FRONT_LEFT | AUDIO_CHANNEL_CONFIG_FRONT_RIGHT,  \
+          0x00, AUDIO_CTRL_NONE, 0x00),                                        \
+      TUD_AUDIO_DESC_OUTPUT_TERM(0x03, AUDIO_TERM_TYPE_USB_STREAMING, 0x01,    \
+                                 0x01, 0x04, 0x0000, 0x00),                    \
+      TUD_AUDIO_DESC_STD_AS_INT((_itf + 1), 0x00, 0x00, _stridx),              \
+      TUD_AUDIO_DESC_STD_AS_INT((_itf + 1), 0x01, 0x01, _stridx),              \
+      TUD_AUDIO_DESC_CS_AS_INT(0x03, AUDIO_CTRL_NONE, AUDIO_FORMAT_TYPE_I,     \
+                               AUDIO_DATA_FORMAT_TYPE_I_PCM, 0x02,             \
+                               AUDIO_CHANNEL_CONFIG_FRONT_LEFT |               \
+                                   AUDIO_CHANNEL_CONFIG_FRONT_RIGHT,           \
+                               0x00),                                          \
+      TUD_AUDIO_DESC_TYPE_I_FORMAT(0x02, 0x10),                                \
+      TUD_AUDIO_DESC_STD_AS_ISO_EP(_epin,                                      \
+                                   TUSB_XFER_ISOCHRONOUS |                     \
+                                       TUSB_ISO_EP_ATT_ASYNCHRONOUS |          \
+                                       TUSB_ISO_EP_ATT_DATA,                   \
+                                   _epsize, 0x01),                             \
+      TUD_AUDIO_DESC_CS_AS_ISO_EP(                                             \
+          AUDIO_CS_AS_ISO_DATA_EP_ATT_NON_MAX_PACKETS_OK, AUDIO_CTRL_NONE,     \
+          AUDIO_CS_AS_ISO_DATA_EP_LOCK_DELAY_UNIT_UNDEFINED, 0x0000)
+
 //--------------------------------------------------------------------+
 // Device Descriptors
 //--------------------------------------------------------------------+
@@ -79,16 +117,20 @@ enum {
   ITF_NUM_CDC_DATA,
   ITF_NUM_MIDI,
   ITF_NUM_MIDI_STREAMING,
+  ITF_NUM_AUDIO_CONTROL,
+  ITF_NUM_AUDIO_STREAMING,
   ITF_NUM_TOTAL,
 };
 #define CONFIG_TOTAL_LEN                                                       \
-  (TUD_CONFIG_DESC_LEN + TUD_MIDI_DESC_LEN + TUD_CDC_DESC_LEN)
+  (TUD_CONFIG_DESC_LEN + TUD_MIDI_DESC_LEN + TUD_CDC_DESC_LEN +                \
+   CFG_TUD_AUDIO_FUNC_1_DESC_LEN)
 
 #if CFG_TUSB_MCU == OPT_MCU_LPC175X_6X ||                                      \
     CFG_TUSB_MCU == OPT_MCU_LPC177X_8X || CFG_TUSB_MCU == OPT_MCU_LPC40XX
 // LPC 17xx and 40xx endpoint type (bulk/interrupt/iso) are fixed by its number
 // 0 control, 1 In, 2 Bulk, 3 Iso, 4 In etc ...
 #define EPNUM_MIDI 0x02
+#define EPNUM_AUDIO_IN 0x83
 #define EPNUM_CDC_NOTIF 0x81
 #define EPNUM_CDC_OUT 0x02
 #define EPNUM_CDC_IN 0x82
@@ -96,6 +138,7 @@ enum {
 // needs to be different than the CDC notification (0x01) endpoint
 // see: https://github.com/hathach/tinyusb/discussions/2162
 #define EPNUM_MIDI 0x04
+#define EPNUM_AUDIO_IN 0x83
 
 #define EPNUM_CDC_NOTIF 0x81
 #define EPNUM_CDC_OUT 0x02
@@ -113,7 +156,8 @@ uint8_t const desc_fs_configuration[] = {
                        EPNUM_CDC_IN, 64),
 
     // Interface number, string index, EP Out & EP In address, EP size
-    TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, 0, EPNUM_MIDI, 0x80 | EPNUM_MIDI, 64)};
+    TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, 0, EPNUM_MIDI, 0x80 | EPNUM_MIDI, 64),
+    TUD_AUDIO_MASTER_DESCRIPTOR(ITF_NUM_AUDIO_CONTROL, 5, EPNUM_AUDIO_IN, 180)};
 
 #if TUD_OPT_HIGH_SPEED
 uint8_t const desc_hs_configuration[] = {
@@ -127,7 +171,8 @@ uint8_t const desc_hs_configuration[] = {
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT,
                        EPNUM_CDC_IN, 512),
     // Interface number, string index, EP Out & EP In address, EP size
-    TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, 0, EPNUM_MIDI, 0x80 | EPNUM_MIDI, 512)};
+    TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, 0, EPNUM_MIDI, 0x80 | EPNUM_MIDI, 512),
+    TUD_AUDIO_MASTER_DESCRIPTOR(ITF_NUM_AUDIO_CONTROL, 5, EPNUM_AUDIO_IN, 24)};
 #endif
 // Invoked when received GET CONFIGURATION DESCRIPTOR
 // Application return pointer to descriptor
@@ -153,6 +198,7 @@ char const *string_desc_arr[] = {
     "PicoTracker Advance",      // 2: Product
     "123456",                   // 3: Serials, should use chip ID
     "TinyUSB CDC",              // 4: CDC Interface
+    "picoTracker Master",       // 5: USB master audio stream
 };
 
 char id_out[2 * 6 + 1];
@@ -190,4 +236,48 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
   // first byte is length (including header), second byte is string type
   _desc_str[0] = (TUSB_DESC_STRING << 8) | (2 * chr_count + 2);
   return _desc_str;
+}
+
+bool tud_audio_get_req_entity_cb(uint8_t rhport,
+                                 tusb_control_request_t const *request) {
+  const audio_control_request_t *audioRequest =
+      (const audio_control_request_t *)request;
+  if (audioRequest->bEntityID != 0x04 ||
+      audioRequest->bControlSelector != AUDIO_CS_CTRL_SAM_FREQ) {
+    return false;
+  }
+
+  static const audio_control_cur_4_t currentRate = {.bCur = 44100};
+  static const struct TU_ATTR_PACKED {
+    uint16_t wNumSubRanges;
+    struct TU_ATTR_PACKED {
+      int32_t bMin;
+      int32_t bMax;
+      uint32_t bRes;
+    } subrange;
+  } supportedRates = {.wNumSubRanges = 1,
+                      .subrange = {.bMin = 44100, .bMax = 44100, .bRes = 0}};
+
+  if (audioRequest->bRequest == AUDIO_CS_REQ_CUR) {
+    return tud_audio_buffer_and_schedule_control_xfer(
+        rhport, request, (void *)&currentRate, sizeof(currentRate));
+  }
+  if (audioRequest->bRequest == AUDIO_CS_REQ_RANGE) {
+    // Hosts may first fetch only wNumSubRanges. The control transfer clamps
+    // the response to wLength; the audio helper also tracks the clock rate.
+    return tud_audio_buffer_and_schedule_control_xfer(
+        rhport, request, (void *)&supportedRates, sizeof(supportedRates));
+  }
+  return false;
+}
+
+bool tud_audio_set_itf_cb(uint8_t rhport,
+                          tusb_control_request_t const *request) {
+  (void)rhport;
+  const uint8_t interfaceNumber = (uint8_t)request->wIndex;
+  if (interfaceNumber == ITF_NUM_AUDIO_STREAMING) {
+    const uint8_t alternateSetting = (uint8_t)request->wValue;
+    usbMasterAudioSetStreaming(alternateSetting == 1);
+  }
+  return true;
 }

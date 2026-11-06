@@ -15,6 +15,7 @@
 #include "System/Console/Trace.h"
 #include "System/FileSystem/FileSystem.h"
 #include "System/FileSystem/PathUtils.h"
+#include "advLineInCapture.h"
 #include "sai.h"
 #include "sd_diskio.h"
 #include "tlv320aic3204.h"
@@ -41,6 +42,8 @@ __attribute__((aligned(32))) static uint16_t recordRamBuffer[kRecordRamSamples];
 TaskHandle_t RecordHandle = NULL;
 
 static volatile bool recordingActive = false;
+// Remains true through stop/finalization until the peripheral is handed back.
+static volatile bool captureSessionActive = false;
 static volatile bool writeInProgress = false;
 static volatile bool savingInProgress = false;
 static volatile uint8_t savingProgressPercent = 0;
@@ -262,6 +265,12 @@ void SetMicGain(int32_t gainDb) {
 
 void StartMonitoring() {
 
+  // The record path takes SAI block B and the codec for itself
+  if (!AdvLineInCapture::GetInstance().setRecordSessionActive(true)) {
+    return;
+  }
+  recordingFinishedSemaphore = xSemaphoreCreateBinaryStatic(&xSemaphoreBuffer);
+
   // Set the flag for monitoring-only mode
   monitoringOnly = true;
   recordingSessionActive = false;
@@ -276,23 +285,16 @@ void StartMonitoring() {
   HAL_SAI_Receive_DMA(&hsai_BlockB1, (uint8_t *)recordBuffer,
                       RECORD_BUFFER_SIZE);
 
-  // Wake up the Record task to handle the stream
-  vTaskResume(RecordHandle);
+  // Notifications are retained even if the previous stop is still returning.
+  captureSessionActive = true;
+  xTaskNotifyGive(RecordHandle);
   Trace::Log("RECORD", "Monitoring started");
 }
 
-void StopMonitoring() { // Use the main 'recordingActive' flag to trigger the
-                        // task's cleanup routine
-  recordingActive = false;
-  monitoringOnly = false; // Also reset our monitoring flag
-
-  // Notify the Record task to wake it from its wait state so it can clean up
-  if (RecordHandle != NULL) {
-    xTaskNotifyGive(RecordHandle);
-  }
-  // disable all inputs when we stop monitoring
-  tlv320_disable_linein();
-  tlv320_disable_mic();
+void StopMonitoring() {
+  // Finish the old session before the UI configures a different input source.
+  StopRecording();
+  monitoringOnly = false;
   Trace::Log("RECORD", "Monitoring stopped");
 }
 
@@ -326,6 +328,12 @@ bool StartRecording(const char *filename, uint8_t threshold,
   }
   recordingFilename_ = recordingPath;
 
+  // The record path takes SAI block B and the codec for itself. Acquire only
+  // after validation so rejected requests leave live line-in untouched.
+  if (!AdvLineInCapture::GetInstance().setRecordSessionActive(true)) {
+    return false;
+  }
+
   recordChannelCount = (source_ == Mic) ? 1 : 2;
 
   // Activate record mode.
@@ -345,9 +353,6 @@ bool StartRecording(const char *filename, uint8_t threshold,
   // Signal task to start recording
   recordingActive = true;
 
-  // Resume or create task if needed
-  vTaskResume(RecordHandle);
-
   // Clear / init buffers
   memset(recordBuffer, 0, RECORD_BUFFER_SIZE * sizeof(uint16_t));
 
@@ -358,14 +363,15 @@ bool StartRecording(const char *filename, uint8_t threshold,
     Trace::Error("SAI receive failed");
   }
   start = xTaskGetTickCount();
+  captureSessionActive = true;
+  xTaskNotifyGive(RecordHandle);
   return true;
 }
 
 void StopRecording() {
   // Idempotent: if neither active recording nor save finalization is running,
   // there is nothing to wait for.
-  if (!recordingActive && !savingInProgress) {
-    FinishStopRecording();
+  if (!captureSessionActive) {
     return;
   }
 
@@ -378,7 +384,6 @@ void StopRecording() {
     Trace::Error("RECORD: stop timed out after %lu ms",
                  kStopRecordingTimeoutMs);
   }
-  FinishStopRecording();
 }
 
 void CancelRecording() {
@@ -386,7 +391,6 @@ void CancelRecording() {
   // writing it out, and closes and deletes the file if a write already started.
   cancelRequested = true;
   RequestStopRecording();
-  FinishStopRecording();
 }
 
 void RequestStopRecording() {
@@ -415,15 +419,16 @@ bool WaitForRecordingStop(uint32_t timeoutMs) {
          pdTRUE;
 }
 
-void FinishStopRecording() {
-  // disable all inputs when we finish recording
-  tlv320_disable_linein();
-  tlv320_disable_mic();
-}
-
 void Record(void *) {
   uint32_t lastLoggedTime = xTaskGetTickCount();
   for (;;) {
+    // Only the session owner may stop DMA or touch the codec. Stale stop
+    // notifications must not run cleanup again after live capture resumes.
+    if (!captureSessionActive) {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      continue;
+    }
+
     if (!monitoringOnly && (xTaskGetTickCount() - start > recordDuration_)) {
       RequestStopRecording();
     }
@@ -432,6 +437,8 @@ void Record(void *) {
       HAL_SAI_DMAStop(&hsai_BlockB1);
 
       Player::GetInstance()->StopRecordStreaming();
+      tlv320_disable_linein();
+      tlv320_disable_mic();
 
       bool writeFailed = false;
       if (recordingSessionActive) {
@@ -474,11 +481,15 @@ void Record(void *) {
                                    : "OK");
       }
 
+      // Complete codec cleanup before live capture can enable line-in again.
+      AdvLineInCapture::GetInstance().setRecordSessionActive(false);
+      captureSessionActive = false;
+
       if (recordingFinishedSemaphore != NULL) {
         xSemaphoreGive(recordingFinishedSemaphore);
       }
 
-      vTaskSuspend(nullptr); // Suspend self until StartRecording resumes it
+      continue;
     }
 
     // Interrupt return
@@ -564,7 +575,7 @@ void Record(void *) {
   }
 }
 
-void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
+void RecordRxHalfCplt() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   isHalfBuffer = true;
   if (writeInProgress) {
@@ -574,7 +585,7 @@ void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
+void RecordRxCplt() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   isHalfBuffer = false;
   if (writeInProgress) {

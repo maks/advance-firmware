@@ -1,0 +1,25 @@
+picoTracker Advance web factory content
+
+Themes: catppuccin1, catppuccin2, darkula1, darkula2, maks1,
+monokai1, and monokai2 from the picoTracker factory content collection.
+
+dark-fog project: Float-Fi. The project is dedicated to the public domain.
+Its included samples are provided for educational demonstration within this
+project only; they are not licensed for other use outside the project.
+
+oneCycAc project: the picoTracker factory demo project, licensed under
+CC-BY-SA-4.0. Its AKWF_0906.wav sample is an Adventure Kid Wavetable.
+
+Roberto drum samples: CC0 1.0 Universal.
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Adventure Kid Waveforms by Kristoffer Ekstrand: CC0.
+https://www.adventurekid.se/akrt/waveforms/adventure-kid-waveforms/
+
+OpenPath Music Collection samples: Creative Commons Attribution 3.0.
+https://creativecommons.org/licenses/by/3.0/
+https://archive.org/details/OpenPathMusic44V1
+https://archive.org/details/OpenPathMusic44V2
+https://archive.org/details/OpenPathMusic44V3
+https://archive.org/details/OpenPathMusic44V4
+https://archive.org/details/OpenPathMusic44V5

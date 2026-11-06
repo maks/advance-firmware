@@ -10,6 +10,7 @@
 #include "Services/Audio/AudioOutDriver.h"
 #include "System/Console/Trace.h"
 #include "advAudioDriver.h"
+#include "advLineInCapture.h"
 
 advAudio::advAudio(AudioSettings &hints) : Audio(hints) { hints_ = hints; }
 
@@ -45,6 +46,10 @@ void advAudio::SetMixerVolume(int v) {
     advAudioDriver *drv = (advAudioDriver *)out->GetDriver();
     drv->SetVolume(v);
   }
+}
+
+LineInSource *advAudio::GetLineInSource() {
+  return &AdvLineInCapture::GetInstance();
 }
 
 int advAudio::GetMixerVolume() {

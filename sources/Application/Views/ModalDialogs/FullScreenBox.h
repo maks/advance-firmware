@@ -13,8 +13,8 @@
 #ifndef _FULL_SCREEN_BOX_H_
 #define _FULL_SCREEN_BOX_H_
 
-#include "Adapters/adv/system/error_bitmap.h"
 #include "MessageBox.h"
+#include "System/Display/ErrorBitmap.h"
 
 class FullScreenBox : public MessageBox {
 public:
@@ -32,6 +32,7 @@ public:
   virtual void Destroy() override;
 
   virtual void DrawView();
+  void ProcessButtonMask(unsigned short mask, bool pressed) override;
 
 private:
   const ErrorBitmap *bitmap_ = nullptr;

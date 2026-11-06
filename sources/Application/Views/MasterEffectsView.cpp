@@ -24,8 +24,8 @@ namespace {
 
 constexpr int32_t DelayColumnX = 0;
 constexpr int32_t ReverbColumnX = 14;
-constexpr int32_t EffectHeaderY = 2;
-constexpr int32_t ParameterBaseY = 3;
+constexpr int32_t EffectHeaderY = 0;
+constexpr int32_t ParameterBaseY = 1;
 
 } // namespace
 
@@ -84,6 +84,8 @@ void MasterEffectsView::DrawView() {
   setTitle(etl::string<23>("Master Effects"));
   drawEffectHeaders();
   FieldView::Redraw();
+  GUITextProperties props;
+  drawMasterVuMeter(Player::GetInstance(), props, true);
   drawMap();
 }
 
@@ -101,6 +103,8 @@ void MasterEffectsView::OnFocus() {
 
 void MasterEffectsView::AnimationUpdate() {
   ScreenView::AnimationUpdate();
+  GUITextProperties props;
+  drawMasterVuMeter(Player::GetInstance(), props);
   w_.Flush();
 }
 
@@ -221,8 +225,10 @@ void MasterEffectsView::fillDelayFields(OutputEffect &effect) {
 void MasterEffectsView::drawEffectHeaders() {
   GUITextProperties properties;
   SetColor(CD_HILITE2);
-  DrawString(DelayColumnX, EffectHeaderY, "Delay", properties);
-  DrawString(ReverbColumnX, EffectHeaderY, "Reverb", properties);
+  DrawRegionString(TEXT_REGION_BODY, DelayColumnX, EffectHeaderY, "Delay",
+                   properties);
+  DrawRegionString(TEXT_REGION_BODY, ReverbColumnX, EffectHeaderY, "Reverb",
+                   properties);
 }
 
 void MasterEffectsView::togglePlay() {

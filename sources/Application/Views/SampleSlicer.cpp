@@ -19,6 +19,7 @@
 #include "Application/Model/Song.h"
 #include "Application/Player/Player.h"
 #include "FieldView.h"
+#include "SampleWaveform.h"
 #include "ViewData.h"
 #include <algorithm>
 #include <nanoprintf.h>
@@ -40,11 +41,11 @@ SampleSlicer::SampleSlicer(const SampleSlicerConfig &config)
       graphField_(graphPosition_, GraphWidth, GraphHeight), playKeyHeld_(false),
       previewActive_(false), previewNote_(DefaultSliceNoteBase),
       previewChannel_(0), previewPlayheadSample_(0),
-      previewCursorVisible_(false), modalClearCount_(0),
-      focusSampleHintVisible_(false), focusSampleHint_(0),
-      previewFocusHintVisible_(false), previewRangeVisible_(false),
-      previewRangeStart_(0), previewLoopStartVisible_(false),
-      previewRangeLoopStart_(0), previewRangeEnd_(0) {
+      previewCursorVisible_(false), focusSampleHintVisible_(false),
+      focusSampleHint_(0), previewFocusHintVisible_(false),
+      previewRangeVisible_(false), previewRangeStart_(0),
+      previewLoopStartVisible_(false), previewRangeLoopStart_(0),
+      previewRangeEnd_(0) {
   sliceIndexLabel_[0] = '\0';
   zoomLabel_[0] = '\0';
   graphField_.SetShowBaseline(false);
@@ -177,7 +178,7 @@ void SampleSlicer::Reset() {
   access_.instrument = nullptr;
   instrumentIndex_ = 0;
   sampleSize_ = 0;
-  modalClearCount_ = 0;
+
   focusSampleHintVisible_ = false;
   focusSampleHint_ = 0;
   previewFocusHintVisible_ = false;
@@ -477,14 +478,7 @@ void SampleSlicer::AnimationUpdate(View &view) {
     markDirty(view);
   }
 
-  if (!view.HasModalView() && modalClearCount_ > 0) {
-    graphField_.RequestFullRedraw();
-    markDirty(view);
-    Draw(view);
-    modalClearCount_--;
-  }
-  if (!view.HasModalView() &&
-      (previousCursorVisible || previewCursorVisible_)) {
+  if (previousCursorVisible || previewCursorVisible_) {
     Draw(view);
   }
 }
@@ -564,19 +558,8 @@ void SampleSlicer::AutoSliceEvenly(View &view) {
   markDirty(view);
 }
 
-// GraphField draws pixels directly, while regular fields are flushed through
-// AppWindow's text cache. After modals schedule one or  more full graph redraws
-// so the text cache can settle before the waveform is repainted cleanly over
-// the graph area. A count of zero cancels recovery.
-void SampleSlicer::MarkModalRecovery(uint8_t count) {
-  modalClearCount_ = count;
-}
-
-void SampleSlicer::ClearWaveformRegion(View &view) {
-  GUIRect rect(graphPosition_._x, graphPosition_._y,
-               graphPosition_._x + GraphWidth, graphPosition_._y + GraphHeight);
-  view.DrawRect(rect, CD_BACKGROUND);
-}
+// GraphField writes region-local primitives. Overlay backing preserves covered
+// updates, so modal dismissal no longer schedules recovery frames or clears.
 
 void SampleSlicer::SetFocusSampleHint(bool visible, uint32_t sample) {
   focusSampleHintVisible_ = visible;
@@ -679,7 +662,7 @@ bool SampleSlicer::refreshSampleSize() {
 
 void SampleSlicer::rebuildWaveform() {
   graphField_.InvalidateWaveform();
-  graphField_.BeginRmsBuild();
+  graphField_.ClearWaveformCache();
 
   if (!refreshSampleSize() || sampleSize_ == 0 ||
       graphField_.ViewEnd() <= graphField_.ViewStart()) {
@@ -694,17 +677,16 @@ void SampleSlicer::rebuildWaveform() {
 
   int32_t channels = source->GetChannelCount(0);
   int16_t *samples = static_cast<int16_t *>(source->GetSampleBuffer(0));
-  if (!samples) {
+  if (!samples || channels <= 0) {
     return;
   }
 
   uint32_t viewStart = graphField_.ViewStart();
   uint32_t viewEnd = graphField_.ViewEnd();
-  for (uint32_t i = viewStart; i < viewEnd; ++i) {
-    graphField_.AccumulateRmsSample(i, samples[i * channels]);
-  }
-
-  graphField_.FinalizeRmsBuild();
+  SampleWaveform::Build(samples, static_cast<uint32_t>(channels), viewStart,
+                        viewEnd, graphField_.WaveformCache(),
+                        GraphField::CacheSize, GraphHeight);
+  graphField_.SetWaveformValid(true);
 }
 
 void SampleSlicer::updateSliceSelectionFromInstrument() {

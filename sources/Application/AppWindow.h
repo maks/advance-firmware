@@ -51,6 +51,28 @@ public:
   virtual void ClearTextRect(GUIRect &rect);
   virtual void SetColor(ColorDefinition cd);
   void InvalidateTextCache();
+  void ConfigureGraphics(GraphicsLayout layout);
+  uint32_t GraphicsRevision() const;
+  void DrawGraphicsRect(uint8_t region, const GUIRect &local,
+                        ColorDefinition color);
+  static constexpr uint32_t PowerOverlayOwner = UINT32_MAX;
+  bool HasOverlay(uint32_t owner) const;
+  void BeginOverlay(uint32_t owner);
+  void SetOverlayBounds(GraphicsRegion bounds);
+  void EndOverlay();
+  void CloseOverlay(uint32_t owner);
+  void CloseModalOverlay();
+  void DiscardOverlays();
+  // Call on screen entry, before submitting text. Pass an explicit definition.
+  // Invalid/overlapping layouts are ignored, preserving the current layout.
+  bool ConfigureTextRegions(const TextRegion *regions, uint8_t count);
+  // Prepared geometry of the installed region; nullptr for an invalid ID.
+  const TextRegionInfo *GetTextRegion(uint8_t region) const;
+  void DrawRegionString(uint8_t region, const char *text, const GUIPoint &pos,
+                        const GUITextProperties &props);
+  void ClearRegionTextRect(uint8_t region, const GUIRect &rect);
+  void StyleRegionTextRect(uint8_t region, const GUIRect &rect,
+                           ColorDefinition color, bool invert);
 
   void SetDirty();
   void SetMixerViewDirty();
@@ -92,6 +114,18 @@ protected: // GUIWindow implementation
   void onQuitApp();
 
 private:
+  // The only application path for entering/restoring a focused screen.
+  void FocusView(View &view, ViewType type);
+  struct OverlayCache {
+    uint32_t owner;
+    GraphicsRegion bounds;
+    bool placed;
+    uint8_t chars[32 * 24], props[32 * 24], previous[32 * 24],
+        previousProps[32 * 24];
+  };
+  // Overlay caches are ordinary static RAM; the hot base cache stays in DTCM.
+  static OverlayCache overlays_[GRAPHICS_OVERLAY_LIMIT];
+  uint8_t overlayDepth_ = 0, overlayTarget_ = 0;
   bool AutoSave();
   void AutoSaveBeforePowerDown();
 
@@ -113,10 +147,10 @@ private:
   bool sdCardMissing_;
   bool sdCardMessageShown_;
 
-  static unsigned char _charScreen[SCREEN_CHARS];
-  static unsigned char _charScreenProp[SCREEN_CHARS];
-  static unsigned char _preScreen[SCREEN_CHARS];
-  static unsigned char _preScreenProp[SCREEN_CHARS];
+  static unsigned char _charScreen[TEXT_REGION_CAPACITY];
+  static unsigned char _charScreenProp[TEXT_REGION_CAPACITY];
+  static unsigned char _preScreen[TEXT_REGION_CAPACITY];
+  static unsigned char _preScreenProp[TEXT_REGION_CAPACITY];
 
   static GUIColor backgroundColor_;
   static GUIColor normalColor_;
@@ -136,9 +170,6 @@ private:
   static GUIColor reserved4Color_;
 
   ColorDefinition colorIndex_;
-
-  static int charWidth_;
-  static int charHeight_;
 
   bool loadProject_ = false;
   bool awaitingProjectLoadAck_ = false;

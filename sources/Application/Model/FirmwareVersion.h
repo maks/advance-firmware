@@ -7,8 +7,8 @@
 #ifndef _FIRMWARE_VERSION_H_
 #define _FIRMWARE_VERSION_H_
 
-#include "Adapters/adv/Core/Inc/firmware_info.h"
 #include "BuildNumber.h"
+#include "FirmwareVersionCode.h"
 
 #include "Externals/etl/include/etl/string.h"
 #include "System/Console/nanoprintf.h"
@@ -17,7 +17,7 @@ using FirmwareVersionString = etl::string<32>;
 using FirmwareNumberString = etl::string<8>; // because max ver is "255.255"
 
 inline FirmwareVersionString FormatFirmwareRelease() {
-  const uint32_t version = firmware_info.version;
+  const uint32_t version = FIRMWARE_VERSION;
   const unsigned major = (version >> 16) & 0xFF;
   const unsigned minor = (version >> 8) & 0xFF;
   const unsigned patch = version & 0xFF;
@@ -44,7 +44,7 @@ inline FirmwareVersionString FormatFirmwareRelease() {
 }
 
 inline FirmwareNumberString FormatFirmwareVersionNumber() {
-  const uint32_t version = firmware_info.version;
+  const uint32_t version = FIRMWARE_VERSION;
   const unsigned major = (version >> 16) & 0xFF;
   const unsigned minor = (version >> 8) & 0xFF;
 

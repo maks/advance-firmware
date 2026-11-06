@@ -28,6 +28,8 @@ public:
   virtual void CloseDriver();
   virtual bool StartDriver();
   virtual void StopDriver();
+  void AddBuffer(short *buffer, int samplecount,
+                 bool silenceOutput = false) override;
   virtual int GetPlayedBufferPercentage();
   virtual int GetSampleRate() { return kAudioSampleRateHz; };
   virtual bool Interlaced() { return true; };

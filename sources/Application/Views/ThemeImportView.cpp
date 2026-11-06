@@ -140,7 +140,6 @@ void ThemeImportView::DrawView() {
   Clear();
 
   GUITextProperties props;
-  GUIPoint pos = GetTitlePosition();
 
   // Draw title
   setTitle(etl::string<23>("Import Theme"));
@@ -149,7 +148,7 @@ void ThemeImportView::DrawView() {
 
   // Draw theme files
   int x = 1;
-  int y = pos._y + 2;
+  int y = 1;
 
   for (size_t i = topIndex_;
        i < topIndex_ + LIST_PAGE_SIZE && (i < fileEntries_.size()); i++) {
@@ -164,11 +163,13 @@ void ThemeImportView::DrawView() {
     const auto &entry = fileEntries_[i];
     if (entry.type == PFT_DIR) {
       if (entry.name == BrowserPathUtils::kParentDirectoryName) {
-        DrawString(x, y, BrowserPathUtils::kParentDirectoryDisplayName, props);
+        DrawRegionString(TEXT_REGION_BODY, x, y,
+                         BrowserPathUtils::kParentDirectoryDisplayName, props);
       } else {
-        DrawString(x, y, "[", props);
-        DrawString(x + 1, y, entry.name.c_str(), props);
-        DrawString(x + entry.name.size() + 1, y, "]", props);
+        DrawRegionString(TEXT_REGION_BODY, x, y, "[", props);
+        DrawRegionString(TEXT_REGION_BODY, x + 1, y, entry.name.c_str(), props);
+        DrawRegionString(TEXT_REGION_BODY, x + entry.name.size() + 1, y, "]",
+                         props);
       }
     } else {
       char buffer[PFILENAME_SIZE] = {};
@@ -177,7 +178,7 @@ void ThemeImportView::DrawView() {
       if (dot) {
         *dot = '\0';
       }
-      DrawString(x, y, buffer, props);
+      DrawRegionString(TEXT_REGION_BODY, x, y, buffer, props);
     }
     y++;
   }

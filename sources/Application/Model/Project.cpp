@@ -73,6 +73,9 @@ bool IsMixRoutingVariable(FourCC id) {
   if (id == FourCC::VarMasterVolume) {
     return true;
   }
+  if (id == FourCC::VarLineInMixLevel) {
+    return true;
+  }
   if (id >= FourCC::VarChannel1Volume && id <= FourCC::VarChannel8Volume) {
     return true;
   }
@@ -91,6 +94,7 @@ Project::Project(const char *name)
     : Persistent("PROJECT"), VariableContainer(&variables_), song_(),
       tempoNudge_(0), tempo_(FourCC::VarTempo, DEFAULT_TEMPO),
       masterVolume_(FourCC::VarMasterVolume, DefaultMixerVolume),
+      lineInMixLevel_(FourCC::VarLineInMixLevel, 0),
       channelVolume1_(FourCC::VarChannel1Volume, DefaultMixerVolume),
       channelVolume2_(FourCC::VarChannel2Volume, DefaultMixerVolume),
       channelVolume3_(FourCC::VarChannel3Volume, DefaultMixerVolume),
@@ -155,6 +159,7 @@ Project::Project(const char *name)
 
   this->variables_.insert(variables_.end(), &tempo_);
   this->variables_.insert(variables_.end(), &masterVolume_);
+  this->variables_.insert(variables_.end(), &lineInMixLevel_);
 
   // Add individual channel volume variables to the container
   this->variables_.insert(variables_.end(), &channelVolume1_);
@@ -224,27 +229,65 @@ Project::Project(const char *name)
   }
 
   WatchedVariable *mixRoutingVars[] = {
-      &masterVolume_,    &channelVolume1_,  &channelVolume2_,
-      &channelVolume3_,  &channelVolume4_,  &channelVolume5_,
-      &channelVolume6_,  &channelVolume7_,  &channelVolume8_,
-      &channel1FX1Send_, &channel2FX1Send_, &channel3FX1Send_,
-      &channel4FX1Send_, &channel5FX1Send_, &channel6FX1Send_,
-      &channel7FX1Send_, &channel8FX1Send_, &channel1FX2Send_,
-      &channel2FX2Send_, &channel3FX2Send_, &channel4FX2Send_,
-      &channel5FX2Send_, &channel6FX2Send_, &channel7FX2Send_,
-      &channel8FX2Send_, &channel1FX3Send_, &channel2FX3Send_,
-      &channel3FX3Send_, &channel4FX3Send_, &channel5FX3Send_,
-      &channel6FX3Send_, &channel7FX3Send_, &channel8FX3Send_,
-      &channel1FX4Send_, &channel2FX4Send_, &channel3FX4Send_,
-      &channel4FX4Send_, &channel5FX4Send_, &channel6FX4Send_,
-      &channel7FX4Send_, &channel8FX4Send_, &fx1Volume_,
-      &fx2Volume_,       &fx3Volume_,       &fx4Volume_,
-      &fx1ToFX2Send_,    &fx1ToFX3Send_,    &fx1ToFX4Send_,
-      &fx2ToFX3Send_,    &fx2ToFX4Send_,    &fx3ToFX4Send_,
+      &masterVolume_,
+      &channelVolume1_,
+      &channelVolume2_,
+      &channelVolume3_,
+      &channelVolume4_,
+      &channelVolume5_,
+      &channelVolume6_,
+      &channelVolume7_,
+      &channelVolume8_,
+      &channel1FX1Send_,
+      &channel2FX1Send_,
+      &channel3FX1Send_,
+      &channel4FX1Send_,
+      &channel5FX1Send_,
+      &channel6FX1Send_,
+      &channel7FX1Send_,
+      &channel8FX1Send_,
+      &channel1FX2Send_,
+      &channel2FX2Send_,
+      &channel3FX2Send_,
+      &channel4FX2Send_,
+      &channel5FX2Send_,
+      &channel6FX2Send_,
+      &channel7FX2Send_,
+      &channel8FX2Send_,
+      &channel1FX3Send_,
+      &channel2FX3Send_,
+      &channel3FX3Send_,
+      &channel4FX3Send_,
+      &channel5FX3Send_,
+      &channel6FX3Send_,
+      &channel7FX3Send_,
+      &channel8FX3Send_,
+      &channel1FX4Send_,
+      &channel2FX4Send_,
+      &channel3FX4Send_,
+      &channel4FX4Send_,
+      &channel5FX4Send_,
+      &channel6FX4Send_,
+      &channel7FX4Send_,
+      &channel8FX4Send_,
+      &fx1Volume_,
+      &fx2Volume_,
+      &fx3Volume_,
+      &fx4Volume_,
+      &fx1ToFX2Send_,
+      &fx1ToFX3Send_,
+      &fx1ToFX4Send_,
+      &fx2ToFX3Send_,
+      &fx2ToFX4Send_,
+      &fx3ToFX4Send_,
   };
   for (WatchedVariable *var : mixRoutingVars) {
     var->AddObserver(*this);
   }
+
+  // The line input joins the mix at the master output, so its level is mix
+  // routing as well.
+  lineInMixLevel_.AddObserver(*this);
 
   // Project name is now managed through the WatchedVariable
 
@@ -280,6 +323,7 @@ void Project::Load(const char *name) {
 
   tempo_.Reset();
   masterVolume_.Reset();
+  lineInMixLevel_.Reset();
   channelVolume1_.Reset();
   channelVolume2_.Reset();
   channelVolume3_.Reset();
@@ -371,6 +415,11 @@ int Project::GetMasterVolume() {
   Variable *v = FindVariable(FourCC::VarMasterVolume);
   NAssert(v);
   return v->GetInt();
+}
+
+int Project::GetLineInMixLevel() {
+  return std::clamp(lineInMixLevel_.GetInt(), 0,
+                    static_cast<int>(MixerVolumeMaximum));
 }
 
 int Project::GetChannelVolume(int channel) {
@@ -603,12 +652,14 @@ InstrumentBank *Project::GetInstrumentBank() { return &instrumentBank_; };
 // Changing a NONE slot is always safe. Other instrument types can only be
 // replaced during playback when no project data, live input, or mixer voice
 // refers to them.
-bool Project::CanChangeInstrumentTypeWhilePlaying(uint8_t instrumentId) const {
+bool Project::CanChangeInstrumentTypeWhilePlaying(
+    uint8_t instrumentId) const {
   if (instrumentId >= MAX_INSTRUMENT_COUNT) {
     return false;
   }
 
-  I_Instrument *instrument = instrumentBank_.InstrumentsList()[instrumentId];
+  I_Instrument *instrument =
+      instrumentBank_.InstrumentsList()[instrumentId];
   if (instrument == nullptr) {
     return false;
   }
@@ -625,7 +676,8 @@ bool Project::CanChangeInstrumentTypeWhilePlaying(uint8_t instrumentId) const {
   if (midiService != nullptr) {
     for (uint8_t songChannel = 0; songChannel < SONG_CHANNEL_COUNT;
          songChannel++) {
-      const uint8_t midiInputChannel = song_.GetMidiInputChannel(songChannel);
+      const uint8_t midiInputChannel =
+          song_.GetMidiInputChannel(songChannel);
       if (midiInputChannel != MIDI_INPUT_CHANNEL_NONE &&
           midiService->IsInputProgramSelected(midiInputChannel - 1U,
                                               instrumentId)) {
@@ -835,13 +887,13 @@ void Project::RestoreContent(PersistencyDocument *doc) {
         v->SetInt(std::clamp(atoi(value), int(MIN_TEMPO), int(MAX_TEMPO)));
       } else if (v->GetID() == FourCC::VarMasterVolume) {
         newMasterVolumeFound = true;
-        v->SetInt(
-            std::clamp(atoi(value), 0, static_cast<int>(MixerVolumeMaximum)));
+        v->SetInt(std::clamp(atoi(value), 0,
+                             static_cast<int>(MixerVolumeMaximum)));
       } else if (const int32_t channel = GetChannelVolumeIndex(v->GetID());
                  channel >= 0) {
         newChannelVolumesFound[channel] = true;
-        v->SetInt(
-            std::clamp(atoi(value), 0, static_cast<int>(MixerVolumeMaximum)));
+        v->SetInt(std::clamp(atoi(value), 0,
+                             static_cast<int>(MixerVolumeMaximum)));
       } else {
         v->SetString(value);
       }
@@ -857,8 +909,8 @@ void Project::RestoreContent(PersistencyDocument *doc) {
   }
 
   if (!newMasterVolumeFound && legacyMasterVolumeFound) {
-    masterVolume_.SetInt(
-        ScaleLegacyMixerVolume(legacyMasterVolume, LegacyMasterVolumeMaximum));
+    masterVolume_.SetInt(ScaleLegacyMixerVolume(
+        legacyMasterVolume, LegacyMasterVolumeMaximum));
   }
 
   WatchedVariable *channelVolumes[SONG_CHANNEL_COUNT] = {
