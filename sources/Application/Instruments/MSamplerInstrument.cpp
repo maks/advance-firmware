@@ -421,11 +421,10 @@ bool MSamplerInstrument::GetPlaybackPosition(int channel,
 }
 
 void MSamplerInstrument::Release(int channel) {
-  if (channel >= 0 && channel < static_cast<int>(channels_.size()) &&
-      channels_[static_cast<size_t>(channel)].active_) {
-    channels_[static_cast<size_t>(channel)].releaseSamples_ =
-        ReleaseRampSamples;
-  }
+  // AudioVoice owns note-off gain and stops this source when its ADSR is idle.
+  // Keep advancing the sample throughout that release, rather than replacing
+  // the user-selected envelope with the emergency end/starvation ramp.
+  (void)channel;
 }
 
 void MSamplerInstrument::Stop(int channel) {

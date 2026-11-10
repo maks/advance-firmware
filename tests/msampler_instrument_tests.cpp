@@ -9,6 +9,7 @@
 #include "Application/Instruments/SamplePool.h"
 #include "Application/Instruments/WavHeader.h"
 #include "Application/Persistency/PersistencyDocument.h"
+#include "Application/Player/AudioVoice.h"
 #include "System/FileSystem/FakeFileSystem.h"
 #include "doctest/doctest.h"
 #include <filesystem>
@@ -287,5 +288,116 @@ TEST_CASE("MSAMPLER interpolates through attack and streamed page boundaries") {
     CHECK(renderedFrames < frames);
     CHECK_FALSE(instrument.GetPlaybackPosition(0, position));
     CHECK(failedOutput[513] == 0.0f);
+  }
+}
+
+namespace {
+void addTransitionPreset(FakeFileSystem &fs) {
+  fs.AddDirectory("/instruments");
+  for (uint8_t zone = 0; zone < 2; ++zone) {
+    const char *path =
+        zone == 0 ? "/instruments/positive.wav" : "/instruments/negative.wav";
+    fs.AddFile(path);
+    auto file = fs.Open(path, "w");
+    REQUIRE(file);
+    REQUIRE(WavHeaderWriter::WriteHeader(file.get(), 44100, 2, 16));
+    std::vector<int16_t> pcm(44100 * 2);
+    for (uint32_t frame = 0; frame < 44100; ++frame) {
+      pcm[frame * 2] = zone == 0 ? 16000 : -12000;
+      pcm[frame * 2 + 1] = zone == 0 ? -8000 : 4000;
+    }
+    REQUIRE(file->Write(pcm.data(), sizeof(int16_t), pcm.size()) ==
+            static_cast<int32_t>(pcm.size() * sizeof(int16_t)));
+    REQUIRE(WavHeaderWriter::UpdateFileSize(file.get(), 44100, 2, 2));
+  }
+  fs.AddFile("/instruments/Transitions.dspreset",
+             "<DecentSampler><groups><group>"
+             "<sample path=\"positive.wav\" rootNote=\"60\" loNote=\"60\" "
+             "hiNote=\"60\"/>"
+             "<sample path=\"negative.wav\" rootNote=\"61\" loNote=\"61\" "
+             "hiNote=\"61\"/>"
+             "</group></groups></DecentSampler>");
+}
+} // namespace
+
+TEST_CASE("MSAMPLER voice controls fit and note-off follows amp release") {
+  FakeFileSystem fs;
+  FileSystemScope fsScope(&fs);
+  WasmSamplePool pool;
+  SamplePoolScope poolScope(&pool);
+  addTransitionPreset(fs);
+  MSamplerInstrument instrument;
+  VoiceParameters parameters;
+  parameters.AppendTo(*instrument.Variables());
+  REQUIRE(instrument.Variables()->size() ==
+          3 + VoiceParameters::PersistedVariableCount);
+  REQUIRE(instrument.FindVariable(FourCC::VoiceAmpRelease));
+  instrument.FindVariable(FourCC::VoiceAmpRelease)->SetInt(0x23, false);
+  instrument.FindVariable(FourCC::VoiceAmpSustain)->SetInt(0x7f, false);
+  REQUIRE(instrument.LoadPreset("/instruments/Transitions.dspreset"));
+  AudioVoice voice(0);
+  REQUIRE(voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+  AudioSample output[256]{};
+  REQUIRE(voice.Render(output, 128, false));
+  voice.ReleaseInstrument();
+  REQUIRE(voice.Render(output, 128, false));
+  CHECK(output[64 * 2] < 0.0f);
+  CHECK(output[64 * 2 + 1] > 0.0f);
+  uint32_t position = 0;
+  REQUIRE(instrument.GetPlaybackPosition(0, position));
+  CHECK(position == 256);
+  for (uint32_t block = 0; block < 400 && voice.GetInstrument(); ++block) {
+    REQUIRE(voice.Render(output, 128, false));
+  }
+  CHECK(voice.GetInstrument() == nullptr);
+  CHECK_FALSE(instrument.GetPlaybackPosition(0, position));
+}
+
+TEST_CASE("MSAMPLER replacement is continuous across render blocks") {
+  FakeFileSystem fs;
+  FileSystemScope fsScope(&fs);
+  WasmSamplePool pool;
+  SamplePoolScope poolScope(&pool);
+  addTransitionPreset(fs);
+  MSamplerInstrument instrument;
+  VoiceParameters parameters;
+  parameters.AppendTo(*instrument.Variables());
+  REQUIRE(instrument.LoadPreset("/instruments/Transitions.dspreset"));
+  for (const auto mode :
+       {InstrumentStartMode::NewNote, InstrumentStartMode::Retrigger}) {
+    AudioVoice voice(0);
+    REQUIRE(
+        voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+    AudioSample output[256]{};
+    REQUIRE(voice.Render(output, 128, false));
+    const AudioSample previousLeft = output[254];
+    const AudioSample previousRight = output[255];
+    REQUIRE(voice.StartInstrument(&instrument, 61, mode));
+    REQUIRE(voice.Render(output, 17, false));
+    CHECK(output[0] == doctest::Approx(previousLeft));
+    CHECK(output[1] == doctest::Approx(previousRight));
+    AudioVoice reference(1);
+    REQUIRE(reference.StartInstrument(&instrument, 60,
+                                      InstrumentStartMode::NewNote));
+    AudioSample wholeBlock[290]{};
+    REQUIRE(reference.Render(wholeBlock, 128, false));
+    REQUIRE(reference.StartInstrument(&instrument, 61, mode));
+    REQUIRE(reference.Render(wholeBlock, 145, false));
+    for (uint32_t index = 0; index < 34; ++index) {
+      CHECK(output[index] == doctest::Approx(wholeBlock[index]));
+    }
+    REQUIRE(voice.Render(output, 128, false));
+    for (uint32_t index = 0; index < 256; ++index) {
+      CHECK(output[index] == doctest::Approx(wholeBlock[index + 34]));
+    }
+    reference.StopInstrument();
+    CHECK(output[100 * 2] > 0.0f);
+    CHECK(output[100 * 2 + 1] < 0.0f);
+    voice.StopInstrument();
+    REQUIRE(
+        voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+    REQUIRE(voice.Render(output, 128, false));
+    CHECK(output[2] < 0.0f); // An explicit stop must discard the old tail.
+    voice.StopInstrument();
   }
 }

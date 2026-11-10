@@ -7,6 +7,7 @@
 
 #include "Application/Instruments/DecentSamplerPreset.h"
 #include "Application/Instruments/I_Instrument.h"
+#include "Application/Instruments/VoiceParameters.h"
 #include "Application/Model/Song.h"
 #include "Application/Persistency/PersistenceConstants.h"
 #include "Externals/etl/include/etl/array.h"
@@ -99,7 +100,8 @@ private:
   void clearState(ChannelState &state);
   void releaseArena();
 
-  etl::vector<Variable *, 3> variables_;
+  etl::vector<Variable *, 3 + VoiceParameters::PersistedVariableCount>
+      variables_;
   Variable level_;
   Variable table_;
   Variable tableAutomation_;

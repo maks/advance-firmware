@@ -335,6 +335,11 @@ bool AudioVoice::StartInstrument(I_Instrument *instrument, unsigned char note,
   }
   const bool continueVoice =
       source_ == instrument && mode == InstrumentStartMode::TiedNote;
+  const bool smoothSampleReplacement = source_ == instrument && source_ &&
+                                       source_->GetType() == IT_MSAMPLER &&
+                                       mode != InstrumentStartMode::TiedNote;
+  const AudioSample precedingLeft = lastSampleLeft_;
+  const AudioSample precedingRight = lastSampleRight_;
   const int16_t precedingNote = currentNote_;
 
   if (source_ && !continueVoice && mode != InstrumentStartMode::Retrigger) {
@@ -376,6 +381,7 @@ bool AudioVoice::StartInstrument(I_Instrument *instrument, unsigned char note,
   updateAmpEnvelopeParameters();
 
   if (!continueVoice) {
+    transitionFramesRemaining_ = 0;
     // IRT deliberately bypasses the entire command reset lifecycle. New
     // commands participate automatically; never snapshot selected commands.
     if (mode != InstrumentStartMode::Retrigger) {
@@ -393,6 +399,11 @@ bool AudioVoice::StartInstrument(I_Instrument *instrument, unsigned char note,
   pitchMultiplierApplied_ = false;
   if (InstrumentTypeUsesModernAudioVoice(source_->GetType())) {
     applyPitchMultiplier();
+  }
+  if (smoothSampleReplacement) {
+    transitionLeft_ = precedingLeft;
+    transitionRight_ = precedingRight;
+    transitionFramesRemaining_ = sampleTransitionFrames;
   }
   return true;
 }
@@ -659,6 +670,9 @@ void AudioVoice::ReleaseInstrument() {
 }
 
 void AudioVoice::StopInstrument() {
+  lastSampleLeft_ = 0.0f;
+  lastSampleRight_ = 0.0f;
+  transitionFramesRemaining_ = 0;
   if (source_) {
     source_->Stop(channel_);
     source_ = nullptr;
@@ -680,6 +694,9 @@ void AudioVoice::StopInstrument() {
 }
 
 void AudioVoice::Reset() {
+  lastSampleLeft_ = 0.0f;
+  lastSampleRight_ = 0.0f;
+  transitionFramesRemaining_ = 0;
   source_ = nullptr;
   lfoBank_.Reset();
   lfoBank_.ClearInstrument();
@@ -866,6 +883,20 @@ bool AudioVoice::Render(AudioSample *buffer, int samplecount, bool updateTick) {
     // targets can force stage chunking.
     advanceCommandRamps(samplesToSequencerSteps(samplecount, stepSampleCount));
   }
+
+  const uint32_t transitionFrames =
+      std::min(static_cast<uint32_t>(samplecount), transitionFramesRemaining_);
+  for (uint32_t frame = 0; frame < transitionFrames; ++frame) {
+    const float gain =
+        static_cast<float>(transitionFramesRemaining_) / sampleTransitionFrames;
+    buffer[frame * 2] =
+        transitionLeft_ * gain + buffer[frame * 2] * (1.0f - gain);
+    buffer[frame * 2 + 1] =
+        transitionRight_ * gain + buffer[frame * 2 + 1] * (1.0f - gain);
+    --transitionFramesRemaining_;
+  }
+  lastSampleLeft_ = buffer[(samplecount - 1) * 2];
+  lastSampleRight_ = buffer[(samplecount - 1) * 2 + 1];
 
   advanceTriggerRelease(updateTick);
 

@@ -283,6 +283,15 @@ private:
   bool syncInsertEffectSlot(int slot, Variable *type, Variable *position);
   void rebuildInsertChains();
 
+  // Smooth MSAMPLER note replacement after the shared envelope and FX, where
+  // continuity is measured in the samples actually sent to the mixer.
+  static constexpr uint32_t sampleTransitionFrames = 64;
+  AudioSample lastSampleLeft_ = 0.0f;
+  AudioSample lastSampleRight_ = 0.0f;
+  AudioSample transitionLeft_ = 0.0f;
+  AudioSample transitionRight_ = 0.0f;
+  uint32_t transitionFramesRemaining_ = 0;
+
   int channel_;
   I_Instrument *source_;
   int16_t currentNote_;
