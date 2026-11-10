@@ -5,7 +5,6 @@
 #include "DecentSamplerPreset.h"
 
 #include "Application/Instruments/WavFile.h"
-#include "Application/Instruments/WavHeader.h"
 #include "Externals/yxml/yxml.h"
 #include "System/FileSystem/FileHandle.h"
 #include "System/FileSystem/FileSystem.h"
@@ -168,27 +167,26 @@ DecentSamplerPresetResult resolveSamplePath(const char *presetPath,
   return {};
 }
 
-DecentSamplerPresetResult validateWav(const char *path, uint32_t &frames,
-                                      uint8_t &channels, uint32_t &sampleRate,
-                                      uint32_t &dataOffset) {
-  FileHandle file = FileSystem::GetInstance()->Open(path, "r");
-  if (!file) {
-    return fail(DecentSamplerPresetError::MissingSample,
-                "could not open sample WAV");
-  }
-  const auto header = WavHeaderWriter::ReadHeader(file.get());
+DecentSamplerPresetResult validateSample(const char *path, uint32_t &frames,
+                                         uint8_t &channels,
+                                         uint32_t &sampleRate,
+                                         uint32_t &dataOffset) {
   WavFile wav;
   const auto wavResult = wav.Open(path);
-  if (!header || !wavResult || wav.GetSampleRate(-1) <= 0 ||
+  if (!wavResult && wavResult.error() == INVALID_FILE) {
+    return fail(DecentSamplerPresetError::MissingSample,
+                "could not open sample audio file");
+  }
+  if (!wavResult || wav.GetSampleRate(-1) <= 0 ||
       (wav.GetChannelCount(-1) != 1 && wav.GetChannelCount(-1) != 2) ||
       wav.GetSize(-1) <= 0) {
     return fail(DecentSamplerPresetError::UnsupportedWav,
-                "sample must be a supported mono or stereo WAV");
+                "sample must be mono/stereo WAV or PCM AIFF");
   }
   frames = static_cast<uint32_t>(wav.GetSize(-1));
   channels = static_cast<uint8_t>(wav.GetChannelCount(-1));
   sampleRate = static_cast<uint32_t>(wav.GetSampleRate(-1));
-  dataOffset = header->dataOffset;
+  dataOffset = wav.GetDataOffset();
   return {};
 }
 
@@ -205,8 +203,8 @@ DecentSamplerPresetResult validateZone(DecentSamplerZone &zone,
   }
   std::memcpy(zone.path_, samplePath, std::strlen(samplePath) + 1);
   uint32_t frameCount = 0;
-  auto wavResult = validateWav(zone.path_, frameCount, zone.channelCount_,
-                               zone.sampleRate_, zone.dataOffset_);
+  auto wavResult = validateSample(zone.path_, frameCount, zone.channelCount_,
+                                  zone.sampleRate_, zone.dataOffset_);
   if (!wavResult) {
     return wavResult;
   }
