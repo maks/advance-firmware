@@ -71,7 +71,7 @@ static bool first_pass = true;
 static uint32_t start = 0;
 static uint32_t totalSamplesWritten = 0;
 static uint32_t recordDuration_ = MAX_INT32;
-static RecordSource source_ = LineIn;
+static RecordSource source_ = AllOff;
 static uint32_t recordRamSamples = 0;
 static FileSystemPath::PathString recordingFilename_;
 static uint16_t recordChannelCount = 2;
@@ -224,8 +224,7 @@ static inline void SwapChannelsToBuffer(const uint16_t *src, uint16_t *dst,
 StaticSemaphore_t xSemaphoreBuffer;
 SemaphoreHandle_t recordingFinishedSemaphore = NULL;
 
-void SetInputSource(RecordSource source) {
-  source_ = source;
+static void ApplyInputSource(RecordSource source) {
   switch (source) {
   case LineIn:
     tlv320_disable_mic();
@@ -249,16 +248,24 @@ void SetInputSource(RecordSource source) {
   }
 }
 
+void SetInputSource(RecordSource source) {
+  source_ = source;
+  if (!captureSessionActive) {
+    return;
+  }
+  ApplyInputSource(source_);
+}
+
 void SetLineInGain(int32_t gainDb) {
   lineInGainDb = gainDb;
-  if (source_ == LineIn) {
+  if (captureSessionActive && source_ == LineIn) {
     tlv320_set_linein_analog_gain_db(lineInGainDb);
   }
 }
 
 void SetMicGain(int32_t gainDb) {
   micGainDb = gainDb;
-  if (source_ == Mic) {
+  if (captureSessionActive && source_ == Mic) {
     tlv320_set_mic_digital_gain_db(micGainDb);
   }
 }
@@ -279,6 +286,10 @@ void StartMonitoring() {
   start = xTaskGetTickCount();
   recordingActive = true; // Use this to keep the task loop active
   first_pass = true;      // Ensure StartRecordStreaming is called
+  captureSessionActive = true;
+  if (source_ != AllOff) {
+    ApplyInputSource(source_);
+  }
 
   // Clear the buffer and start the SAI DMA
   memset(recordBuffer, 0, RECORD_BUFFER_SIZE * sizeof(uint16_t));
@@ -286,13 +297,11 @@ void StartMonitoring() {
                       RECORD_BUFFER_SIZE);
 
   // Notifications are retained even if the previous stop is still returning.
-  captureSessionActive = true;
   xTaskNotifyGive(RecordHandle);
   Trace::Log("RECORD", "Monitoring started");
 }
 
 void StopMonitoring() {
-  // Finish the old session before the UI configures a different input source.
   StopRecording();
   monitoringOnly = false;
   Trace::Log("RECORD", "Monitoring stopped");
@@ -352,6 +361,11 @@ bool StartRecording(const char *filename, uint8_t threshold,
 
   // Signal task to start recording
   recordingActive = true;
+  start = xTaskGetTickCount();
+  captureSessionActive = true;
+  if (source_ != AllOff) {
+    ApplyInputSource(source_);
+  }
 
   // Clear / init buffers
   memset(recordBuffer, 0, RECORD_BUFFER_SIZE * sizeof(uint16_t));
@@ -362,8 +376,6 @@ bool StartRecording(const char *filename, uint8_t threshold,
   if (status != HAL_OK) {
     Trace::Error("SAI receive failed");
   }
-  start = xTaskGetTickCount();
-  captureSessionActive = true;
   xTaskNotifyGive(RecordHandle);
   return true;
 }

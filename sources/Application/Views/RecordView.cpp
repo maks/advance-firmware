@@ -219,12 +219,13 @@ void RecordView::OnFocus() {
   isDirty_ = true;
   recordingDuration_ = 0;
 
+  StartMonitoring();
+
   auto config = Config::GetInstance();
   SetLineInGain(config->FindVariable(FourCC::VarRecordLineGain)->GetInt());
   SetMicGain(config->FindVariable(FourCC::VarRecordMicGain)->GetInt());
 
   updateRecordingSource();
-  StartMonitoring();
 }
 
 void RecordView::Update(Observable &o, I_ObservableData *data) {
@@ -238,9 +239,7 @@ void RecordView::Update(Observable &o, I_ObservableData *data) {
 
   switch (fourcc) {
   case FourCC::VarRecordSource:
-    StopMonitoring();
     updateRecordingSource();
-    StartMonitoring();
     break;
   case FourCC::VarRecordLineGain:
     SetLineInGain(config->FindVariable(FourCC::VarRecordLineGain)->GetInt());
@@ -279,8 +278,8 @@ void RecordView::AnimationUpdate() {
         // Treat empty captures as cancelled: stay on record view and resume
         // monitoring instead of switching to sample editor.
         recordingDuration_ = 0;
-        updateRecordingSource();
         StartMonitoring();
+        updateRecordingSource();
         isDirty_ = true;
         DrawView();
         return;
