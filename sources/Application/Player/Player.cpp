@@ -1334,9 +1334,6 @@ void Player::playCursorPosition(int channel) {
         // Check if note is in acceptable midi range
 
         if (note < 128) {
-          if (startMode == InstrumentStartMode::NewNote) {
-            mixer_.StopInstrument(channel);
-          }
           mixer_.StartInstrument(channel, instrument, note, startMode);
           int instrTable = instrument->GetTable();
 

@@ -351,6 +351,18 @@ TEST_CASE("MSAMPLER voice controls fit and note-off follows amp release") {
   }
   CHECK(voice.GetInstrument() == nullptr);
   CHECK_FALSE(instrument.GetPlaybackPosition(0, position));
+
+  // Default zero release still applies a short de-click release instead of a
+  // single-sample cut to silence.
+  instrument.FindVariable(FourCC::VoiceAmpRelease)->SetInt(0, false);
+  REQUIRE(voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+  REQUIRE(voice.Render(output, 32, false));
+  const AudioSample beforeReleaseLeft = output[62];
+  voice.ReleaseInstrument();
+  REQUIRE(voice.Render(output, 32, false));
+  CHECK(output[0] < 0.0f);
+  CHECK(std::abs(output[0]) < std::abs(beforeReleaseLeft));
+  CHECK(std::abs(output[62]) < std::abs(output[0]));
 }
 
 TEST_CASE("MSAMPLER replacement is continuous across render blocks") {

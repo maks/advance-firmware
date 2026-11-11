@@ -158,7 +158,14 @@ bool MSamplerInstrument::StartWithVelocity(int channel, unsigned char note,
     return false;
   }
   ChannelState &state = channels_[static_cast<size_t>(channel)];
-  if (mode == InstrumentStartMode::TiedNote && state.active_) {
+  if (mode == InstrumentStartMode::TiedNote && state.active_ &&
+      state.zoneIndex_ < preset_->zoneCount_) {
+    state.baseSpeed_ = std::clamp(
+        std::pow(2.0f, (static_cast<float>(note) -
+                        preset_->zones_[state.zoneIndex_].rootNote_) /
+                           12.0f),
+        0.25f, 4.0f);
+    state.speed_ = state.baseSpeed_;
     return true;
   }
 

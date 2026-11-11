@@ -335,8 +335,9 @@ bool AudioVoice::StartInstrument(I_Instrument *instrument, unsigned char note,
   }
   const bool continueVoice =
       source_ == instrument && mode == InstrumentStartMode::TiedNote;
-  const bool smoothSampleReplacement = source_ == instrument && source_ &&
-                                       source_->GetType() == IT_MSAMPLER &&
+  const bool smoothSampleReplacement = source_ != nullptr &&
+                                       instrument != nullptr &&
+                                       instrument->GetType() == IT_MSAMPLER &&
                                        mode != InstrumentStartMode::TiedNote;
   const AudioSample precedingLeft = lastSampleLeft_;
   const AudioSample precedingRight = lastSampleRight_;
@@ -1122,13 +1123,15 @@ void AudioVoice::updateFilterEnvelopeParameters() {
 
 PICOTRACKER_FAST_CODE("audio_voice_update_amp_envelope")
 void AudioVoice::updateAmpEnvelopeParameters() {
+  const int release = getVoiceValue(LFOTarget::VoiceAmpRelease,
+                                    params_.ampRelease_, 0, 0, 0xFF);
   ampEnvelope_.SetParameters(
       getVoiceValue(LFOTarget::VoiceAmpAttack, params_.ampAttack_, 0, 0, 0xFF),
       getVoiceValue(LFOTarget::VoiceAmpDecay, params_.ampDecay_, 0, 0, 0xFF),
       getVoiceValue(LFOTarget::VoiceAmpSustain, params_.ampSustain_, 0xFF, 0,
                     0xFF),
-      getVoiceValue(LFOTarget::VoiceAmpRelease, params_.ampRelease_, 0, 0,
-                    0xFF));
+      source_ && source_->GetType() == IT_MSAMPLER ? std::max(1, release)
+                                                   : release);
 }
 
 PICOTRACKER_FAST_CODE("audio_voice_sync_filter_type")
