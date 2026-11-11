@@ -190,8 +190,6 @@ void InstrumentBank::RestoreContent(PersistencyDocument *doc) {
         }
         I_Instrument *instr = instruments_[id];
 
-        // Let the instrument restore its own content
-        instr->RestoreContent(doc);
         // PRESET can precede TYPE in existing projects. The bank consumes
         // those attributes before handing the parser to the instrument.
         if (instrType == IT_MSAMPLER && !presetPath.empty()) {
@@ -201,6 +199,9 @@ void InstrumentBank::RestoreContent(PersistencyDocument *doc) {
                          presetPath.c_str());
           }
         }
+
+        // Let the instrument restore its own content
+        instr->RestoreContent(doc);
       }
     }
     elem = doc->NextSibling();

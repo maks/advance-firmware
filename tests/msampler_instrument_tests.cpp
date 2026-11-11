@@ -147,11 +147,22 @@ TEST_CASE("MSAMPLER bank restores a playable preset saved before its type") {
   FileSystemScope fileSystemScope(&fileSystem);
   WasmSamplePool samplePool;
   SamplePoolScope samplePoolScope(&samplePool);
-  fileSystem.AddDirectory("/instruments");
-  addPcm16Wav(fileSystem, "/instruments/C4.wav");
-  fileSystem.AddFile("/instruments/Test.dspreset",
-                     "<DecentSampler><groups><group><sample path=\"C4.wav\" "
-                     "rootNote=\"60\"/></group></groups></DecentSampler>");
+  constexpr const char *presetDir =
+      "/projects/myproject/instruments/Modern Acoustic Guitar";
+  constexpr const char *presetPath =
+      "/projects/myproject/instruments/Modern Acoustic Guitar/"
+      "Modern Acoustic Guitar.dspreset";
+  constexpr const char *samplePath =
+      "/projects/myproject/instruments/Modern Acoustic Guitar/sample000.wav";
+  fileSystem.AddDirectory("/projects");
+  fileSystem.AddDirectory("/projects/myproject");
+  fileSystem.AddDirectory("/projects/myproject/instruments");
+  fileSystem.AddDirectory(presetDir);
+  addPcm16Wav(fileSystem, samplePath);
+  fileSystem.AddFile(
+      presetPath,
+      "<DecentSampler><groups><group><sample path=\"sample000.wav\" "
+      "rootNote=\"60\"/></group></groups></DecentSampler>");
   auto savedFile = fileSystem.Open("/bank.xml", "w");
   REQUIRE(savedFile);
   tinyxml2::XMLPrinter printer(savedFile.get());
@@ -161,7 +172,7 @@ TEST_CASE("MSAMPLER bank restores a playable preset saved before its type") {
     REQUIRE(bank->GetNextAndAssignID(IT_MSAMPLER, 0) != NO_MORE_INSTRUMENT);
     auto *instrument =
         static_cast<MSamplerInstrument *>(bank->GetInstrument(0));
-    REQUIRE(instrument->LoadPreset("/instruments/Test.dspreset"));
+    REQUIRE(instrument->LoadPreset(presetPath));
     bank->SaveContent(&printer);
   }
   printer.CloseElement();
@@ -188,8 +199,7 @@ TEST_CASE("MSAMPLER bank restores a playable preset saved before its type") {
   REQUIRE(restored->GetInstrument(0)->GetType() == IT_MSAMPLER);
   auto *instrument =
       static_cast<MSamplerInstrument *>(restored->GetInstrument(0));
-  CHECK(std::string(instrument->GetPresetPath()) ==
-        "/instruments/Test.dspreset");
+  CHECK(std::string(instrument->GetPresetPath()) == presetPath);
   REQUIRE(instrument->StartWithVelocity(0, 60, 100));
   AudioSample output[8]{};
   REQUIRE(instrument->Render(0, output, 4, false));

@@ -469,18 +469,21 @@ void MSamplerInstrument::SaveContent(tinyxml2::XMLPrinter *printer) {
 }
 
 void MSamplerInstrument::RestoreContent(PersistencyDocument *doc) {
-  char presetPath[PFILENAME_SIZE]{};
-  bool hasAttribute = doc->NextAttribute();
-  while (hasAttribute) {
-    if (!strcasecmp(doc->attrname_, "PRESET")) {
-      std::strncpy(presetPath, doc->attrval_, sizeof(presetPath) - 1);
+  etl::string<PFILENAME_SIZE> presetPath;
+  if (doc->r_ == YXML_OK || doc->r_ == YXML_ELEMSTART ||
+      doc->r_ == YXML_ATTREND) {
+    bool hasAttribute = doc->NextAttribute();
+    while (hasAttribute) {
+      if (!strcasecmp(doc->attrname_, "PRESET")) {
+        presetPath = doc->attrval_;
+      }
+      hasAttribute = doc->NextAttribute();
     }
-    hasAttribute = doc->NextAttribute();
+  }
+  if (!presetPath.empty() && !LoadPreset(presetPath.c_str())) {
+    Trace::Error("MSAMPLER: failed to restore preset %s", presetPath.c_str());
   }
   I_Instrument::RestoreContent(doc);
-  if (presetPath[0] != '\0' && !LoadPreset(presetPath)) {
-    Trace::Error("MSAMPLER: failed to restore preset %s", presetPath);
-  }
 }
 
 void MSamplerInstrument::Purge() {
