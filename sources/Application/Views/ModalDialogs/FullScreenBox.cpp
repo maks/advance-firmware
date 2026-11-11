@@ -71,6 +71,13 @@ void FullScreenBox::Destroy() {
   inUse = false;
 };
 
+void FullScreenBox::ProcessButtonMask(unsigned short mask, bool pressed) {
+  // Bitmap warnings are owned by the battery/SD condition in AppWindow. ENTER
+  // must not destroy their modal while that condition still requires it.
+  if (!bitmap_)
+    MessageBox::ProcessButtonMask(mask, pressed);
+}
+
 void FullScreenBox::DrawView() {
   if (bitmap_) {
     return;

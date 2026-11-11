@@ -7,8 +7,8 @@
  * This file is part of the picoTracker firmware
  */
 
-#ifndef _FIRMWARE_INFO_H_
-#define _FIRMWARE_INFO_H_
+#ifndef ADV_CORE_INC_FIRMWARE_INFO_H_
+#define ADV_CORE_INC_FIRMWARE_INFO_H_
 
 #include <stdint.h>
 

@@ -14,8 +14,8 @@
 #ifndef _MIDI_SERVICE_H_
 #define _MIDI_SERVICE_H_
 
-#include "Adapters/adv/usb/usb_utils.h"
 #include "ControlSurface/ApcMiniMk2Surface.h"
+#include "ControlSurface/ControlSurfaceTypes.h"
 #include "ControlSurface/IControlSurface.h"
 #include "ControlSurface/LaunchpadMiniMk3Surface.h"
 #include "Externals/etl/include/etl/vector.h"

@@ -731,13 +731,8 @@ void ChainView::setTextProps(GUITextProperties &props, int row, int col,
 
   bool invert = false;
 
-  if (clipboard_.active_) {
-    GUIRect selRect = getSelectionRect();
-    if ((row >= selRect.Left()) && (row <= selRect.Right()) &&
-        (col >= selRect.Top()) && (col <= selRect.Bottom())) {
-      invert = true;
-    }
-  } else {
+  // Block selections are styled once after all ordinary fields are drawn.
+  if (!clipboard_.active_) {
     if ((viewData_->chainCol_ == row) && (viewData_->chainRow_ == col)) {
       invert = true;
     }
@@ -779,7 +774,7 @@ void ChainView::DrawView() {
   for (int j = 0; j < 16; j++) {
     ((j / ALT_ROW_NUMBER) % 2) ? SetColor(CD_ACCENT) : SetColor(CD_ACCENTALT);
     hex2char(j, row);
-    DrawString(pos._x, pos._y, row, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, row, props);
     pos._y += 1;
   }
 
@@ -798,10 +793,10 @@ void ChainView::DrawView() {
     unsigned char d = *data++;
     setTextProps(props, 0, j, false);
     if (d == 0xFF) {
-      DrawString(pos._x, pos._y, "--", props);
+      DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "--", props);
     } else {
       hex2char(d, row);
-      DrawString(pos._x, pos._y, row, props);
+      DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, row, props);
     }
     setTextProps(props, 0, j, true);
     pos._y++;
@@ -818,11 +813,26 @@ void ChainView::DrawView() {
     unsigned char d = *data++;
     hex2char(d, row);
     setTextProps(props, 1, j, false);
-    DrawString(pos._x, pos._y, row, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, row, props);
     setTextProps(props, 1, j, true);
     pos._y++;
   }
   Player *player = Player::GetInstance();
+
+  if (clipboard_.active_) {
+    // Logical fields have different widths; include only separators BETWEEN
+    // selected fields, never padding beyond either outer selection edge.
+    static constexpr uint8_t starts[] = {0, 3};
+    static constexpr uint8_t ends[] = {2, 5};
+    const GUIRect selected = getSelectionRect();
+    HighlightSelection(TEXT_REGION_BODY,
+                       GUIRect(anchor._x + starts[selected.Left()],
+                               anchor._y + selected.Top(),
+                               anchor._x + ends[selected.Right()],
+                               anchor._y + selected.Bottom() + 1));
+  }
+
+  drawMasterVuMeter(Player::GetInstance(), props, true);
 
   drawMap();
   drawNotes();
@@ -875,10 +885,10 @@ void ChainView::AnimationUpdate() {
 
     // Clear last played & queued
     pos._y = anchor._y + lastPlayingPos_;
-    DrawString(pos._x, pos._y, " ", props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, " ", props);
 
     pos._y = anchor._y + lastQueuedPos_;
-    DrawString(pos._x, pos._y, " ", props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, " ", props);
 
     // Only update play position if player is running
     if (player->IsRunning()) {
@@ -891,10 +901,10 @@ void ChainView::AnimationUpdate() {
             pos._y = anchor._y + viewData_->chainPlayPos_[i];
             if (!player->IsChannelMuted(i)) {
               SetColor(CD_ACCENT);
-              DrawString(pos._x, pos._y, ">", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, ">", props);
             } else {
               SetColor(CD_ACCENTALT);
-              DrawString(pos._x, pos._y, "-", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "-", props);
             }
             lastPlayingPos_ = viewData_->chainPlayPos_[i];
             break;
@@ -917,7 +927,8 @@ void ChainView::AnimationUpdate() {
             unsigned char chainPos = player->GetQueueChainPosition(i);
             pos._y = anchor._y + chainPos;
             const char *indicator = player->GetLiveIndicator(i);
-            DrawString(pos._x, pos._y, indicator, props);
+            DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, indicator,
+                             props);
             lastQueuedPos_ = chainPos;
             break;
           }

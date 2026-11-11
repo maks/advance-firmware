@@ -15,12 +15,16 @@
 #define _TABLE_VIEW_H_
 
 #include "Application/Model/Table.h"
+#include "BaseClasses/CommandHelpState.h"
 #include "BaseClasses/UIBigHexVarField.h"
 #include "ScreenView.h"
 #include "ViewData.h"
 
 class TableView : public ScreenView {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   TableView(GUIWindow &w, ViewData *viewData);
   ~TableView();
   void Reset();
@@ -52,6 +56,7 @@ protected:
   GUIRect getSelectionRect();
 
 private:
+  CommandHelpState commandHelp_;
   enum class TableClipboardColumnType : uint8_t {
     Command,
     Parameter,

@@ -14,6 +14,14 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Export compile_commands.json")
 option(ENABLE_LOGGING "Enable Trace logging" OFF)
 option(ENABLE_PROFILING "Enable profiling" OFF)
+option(WASM "Build for WebAssembly (browser)" OFF)
+
+if(WASM)
+  project(picoTrackerWasm LANGUAGES C CXX)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/wasm/toolchain-check.cmake")
+  add_subdirectory(Adapters/wasm)
+  return()
+endif()
 
 add_compile_options(
   -Werror

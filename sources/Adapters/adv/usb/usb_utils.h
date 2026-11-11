@@ -38,23 +38,17 @@ constexpr uint8_t usbMidiPayloadLength(uint8_t cin) {
   }
 }
 
+#include "Services/Midi/ControlSurface/ControlSurfaceTypes.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef enum UsbHostControlSurfaceType {
-  USB_HOST_CONTROL_SURFACE_NONE = 0,
-  USB_HOST_CONTROL_SURFACE_APC_MINI_MK2 = 1,
-  USB_HOST_CONTROL_SURFACE_LAUNCHPAD_MINI_MK3 = 2,
-} UsbHostControlSurfaceType;
 
 void sendUSBMidiMessage(const uint8_t *midicmd, uint8_t len);
 void pumpUSBMidiTxQueue(void);
 void handleUSBInterrupts();
 void resetUSBMidiSoftwareState(void);
 bool usbHostMidiMounted(void);
-UsbHostControlSurfaceType usbHostControlSurfaceType(void);
-bool usbHostModeActive(void);
 bool usbHostDeviceEnumerated(void);
 bool usbHostEnumerationTimedOut(void);
 bool usbHostStartupFailed(void);

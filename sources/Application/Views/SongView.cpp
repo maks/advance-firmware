@@ -12,12 +12,13 @@
  */
 
 #include "SongView.h"
-#include "Adapters/adv/usb/usb_utils.h"
+#include "Application/AppWindow.h"
 #include "Application/Player/Player.h"
 #include "Application/Utils/char.h"
 #include "Application/Views/BaseClasses/SelectionButtonBehavior.h"
 #include "Application/Views/SampleEditorView.h"
 #include "Application/Views/SelectionResampleSupport.h"
+#include "Services/Midi/ControlSurface/ControlSurfaceTypes.h"
 #include "Services/Midi/MidiService.h"
 #include "System/Console/Trace.h"
 #include "System/Console/nanoprintf.h"
@@ -941,6 +942,24 @@ void SongView::processSelectionButtonMask(unsigned int mask) {
   }
 }
 
+void SongView::drawSelection() {
+  // Prepare selection related information
+  if (selection_.active_) {
+    const GUIPoint anchor = GetAnchor();
+    const GUIRect selRect = getSelectionRect();
+    // The song selection uses absolute song rows; only visible rows belong
+    // to this region. Channel separators are inside the selected rectangle.
+    const int top = std::max(0, selRect.Top() - int(viewData_->songOffset_));
+    const int bottom =
+        std::min(int(View::songRowCount_),
+                 selRect.Bottom() - int(viewData_->songOffset_) + 1);
+    HighlightSelection(TEXT_REGION_BODY,
+                       GUIRect(anchor._x + 3 * selRect.Left(), anchor._y + top,
+                               anchor._x + 3 * selRect.Right() + 2,
+                               anchor._y + bottom));
+  }
+}
+
 /******************************************************
  Redraw:
         redraw completely the song view
@@ -952,13 +971,6 @@ void SongView::DrawView() {
 
   GUITextProperties props;
   GUIPoint pos = GetTitlePosition();
-
-  // Prepare selection related information
-
-  GUIRect selRect;
-  if (selection_.active_) {
-    selRect = getSelectionRect();
-  }
 
   // Draw title
   Player *player = Player::GetInstance();
@@ -975,12 +987,24 @@ void SongView::DrawView() {
   if (player->GetSequencerMode() == SM_LIVE) {
     SetColor(CD_INFO);
     GUITextProperties props;
-    pos._y += 1;
-    DrawString(pos._x, pos._y, "(EDIT+LEFT back to Song)", props);
+    pos._y = 0;
+    DrawRegionString(TEXT_REGION_INFO, 0, 0, "(EDIT+LEFT back to Song)", props);
   }
 
   // Compute song grid location
   GUIPoint anchor = GetAnchor();
+
+  // Align small labels to the nearest cell above the normal-sized channels.
+  const auto &window = static_cast<AppWindow &>(w_);
+  const TextRegionInfo *body = window.GetTextRegion(TEXT_REGION_BODY);
+  const TextRegionInfo *info = window.GetTextRegion(TEXT_REGION_INFO);
+  const auto informationColumn = [body, info](int column) {
+    if (!body || !info)
+      return -1;
+    const int pixel =
+        body->definition.x + column * body->glyph_width - info->definition.x;
+    return (pixel + info->glyph_width / 2) / info->glyph_width;
+  };
 
   // Draw MIDI input assignments directly above their reserved song channels.
   // Unassigned columns stay blank and the row is informational only.
@@ -994,7 +1018,8 @@ void SongView::DrawView() {
 
   if (hasMidiInputAssignment) {
     SetColor(CD_HILITE2);
-    DrawString(anchor._x - 3, anchor._y - 1, "IN", props);
+    DrawRegionString(TEXT_REGION_INFO, informationColumn(anchor._x - 3), 1,
+                     "IN", props);
   }
   char midiInputChannel[3];
   for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
@@ -1002,7 +1027,8 @@ void SongView::DrawView() {
     if (assignment != MIDI_INPUT_CHANNEL_NONE) {
       SetColor(CD_ACCENT);
       hex2char(assignment, midiInputChannel);
-      DrawString(anchor._x + (3 * i), anchor._y - 1, midiInputChannel, props);
+      DrawRegionString(TEXT_REGION_INFO, informationColumn(anchor._x + (3 * i)),
+                       1, midiInputChannel, props);
     }
   }
 
@@ -1037,14 +1063,15 @@ void SongView::DrawView() {
         indicatorGlyph = kControlSurfaceWindowBottomGlyph;
       }
       SetColor(CD_HILITE2);
-      DrawString(controlSurfaceIndicatorX, pos._y, indicatorGlyph, props);
+      DrawRegionString(TEXT_REGION_BODY, controlSurfaceIndicatorX, pos._y,
+                       indicatorGlyph, props);
     }
 
     const uint8_t rowValue = static_cast<uint8_t>(songRow);
     ((songRow / ALT_ROW_NUMBER) % 2) ? SetColor(CD_ACCENT)
                                      : SetColor(CD_ACCENTALT);
     hex2char(rowValue, row);
-    DrawString(pos._x, pos._y, row, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, row, props);
     pos._y += 1;
   }
 
@@ -1065,18 +1092,11 @@ void SongView::DrawView() {
       bool invert = false;
 
       // see if we need to invert current step
-      // if there's a selection or we are at cursor position
+      // The cursor is inverted here; block selection styling follows below.
 
-      if (selection_.active_) {
-        if ((i >= selRect.Left()) && (i <= selRect.Right()) &&
-            (j + viewData_->songOffset_ >= selRect.Top()) &&
-            (j + viewData_->songOffset_ <= selRect.Bottom())) {
-          invert = true;
-        }
-      } else {
-        if (i == viewData_->songX_ && j == viewData_->songY_) {
-          invert = true;
-        }
+      if (!selection_.active_ && i == viewData_->songX_ &&
+          j == viewData_->songY_) {
+        invert = true;
       }
 
       // draw current step
@@ -1096,10 +1116,10 @@ void SongView::DrawView() {
         props.invert_ = true;
       }
       if (d == 0xFF) {
-        DrawString(pos._x, pos._y, "--", props);
+        DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "--", props);
       } else {
         hex2char(d, row);
-        DrawString(pos._x, pos._y, row, props);
+        DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, row, props);
       }
 
       // Put back drawing state
@@ -1116,6 +1136,10 @@ void SongView::DrawView() {
     pos._y += dy;
   }
   SetColor(CD_NORMAL);
+
+  drawSelection();
+
+  drawMasterVuMeter(Player::GetInstance(), props, true);
 
   drawMap();
   drawNotes();
@@ -1183,14 +1207,14 @@ void SongView::AnimationUpdate() {
       int y = lastPlayedPosition_[i] - viewData_->songOffset_;
       if (y >= 0 && y < View::songRowCount_) {
         pos._y = anchor._y + y;
-        DrawString(pos._x, pos._y, " ", props);
+        DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, " ", props);
       }
 
       // Clear all last queued positions
       y = lastQueuedPosition_[i] - viewData_->songOffset_;
       if (y >= 0 && y < View::songRowCount_) {
         pos._y = anchor._y + y;
-        DrawString(pos._x, pos._y, " ", props);
+        DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, " ", props);
       }
 
       // For each playing position, draw current location
@@ -1202,10 +1226,10 @@ void SongView::AnimationUpdate() {
             pos._y = anchor._y + y;
             if (!player->IsChannelMuted(i)) {
               SetColor(CD_ACCENT);
-              DrawString(pos._x, pos._y, ">", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, ">", props);
             } else {
               SetColor(CD_ACCENTALT);
-              DrawString(pos._x, pos._y, "-", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "-", props);
             }
             SetColor(CD_CURSOR);
             lastPlayedPosition_[i] = viewData_->songPlayPos_[i];
@@ -1225,7 +1249,8 @@ void SongView::AnimationUpdate() {
             } else {
               SetColor(CD_ACCENT);
             }
-            DrawString(pos._x, pos._y, indicator, props);
+            DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, indicator,
+                             props);
             SetColor(CD_CURSOR);
             lastQueuedPosition_[i] = player->GetQueuePosition(i);
           }
@@ -1233,6 +1258,10 @@ void SongView::AnimationUpdate() {
       }
       pos._x += 3;
     }
+
+    // Playback markers occupy channel separators inside a block selection.
+    // Keep their glyphs, but restore selection styling after these updates.
+    drawSelection();
 
     // Reset the consolidated flag
     needsUIUpdate_ = false;

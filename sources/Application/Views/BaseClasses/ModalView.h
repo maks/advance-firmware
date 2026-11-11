@@ -37,7 +37,7 @@ protected:
   virtual bool ShouldDeferPlayButtonInput() const override { return false; }
 
   // Override GetAnchor to account for modal window position
-  virtual GUIPoint GetAnchor();
+  GUIPoint GetAnchor() override;
 
 private:
   static uint32_t nextInstanceId_;

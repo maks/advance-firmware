@@ -31,21 +31,26 @@ void ScreenView::OnPlayerUpdate(PlayerEventType, unsigned int tick) {
 void ScreenView::AnimationUpdate() {
   GUITextProperties props;
   updateDeferredPlayButtonHold();
-  drawTitlebar(props);
-  if (shouldDrawPlayTime() && needsPlayTimeUpdate_) {
+  drawTitlebar(TEXT_REGION_HEADER, props);
+  const TextRegionInfo *info =
+      shouldDrawPlayTime()
+          ? static_cast<AppWindow &>(w_).GetTextRegion(TEXT_REGION_INFO)
+          : nullptr;
+  if (info && info->columns >= 5 && needsPlayTimeUpdate_) {
+    const int column = info->columns - 5;
     Player *player = Player::GetInstance();
     if (player != nullptr) {
       char strbuffer[10];
       SetColor(CD_NORMAL);
       props.invert_ = false;
       if (!player->IsRunning()) {
-        DrawString(27, 1, "     ", props);
+        DrawRegionString(TEXT_REGION_INFO, column, 0, "     ", props);
       } else {
         int time = int(player->GetPlayTime());
         int mi = time / 60;
         int se = time - mi * 60;
         npf_snprintf(strbuffer, sizeof(strbuffer), "%2.2d:%2.2d", mi, se);
-        DrawString(27, 1, strbuffer, props);
+        DrawRegionString(TEXT_REGION_INFO, column, 0, strbuffer, props);
       }
     }
     needsPlayTimeUpdate_ = false;

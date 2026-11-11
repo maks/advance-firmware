@@ -28,6 +28,7 @@
 //
 
 #include "UIFramework/BasicDatas/GUIEvent.h"
+#include "UIFramework/BasicDatas/GraphicsRegion.h"
 #include <cstdint>
 
 #define ASCII_SPACE_OFFSET 0xF
@@ -40,8 +41,14 @@ enum RemoteUICommand {
   TEXT_CMD = 0x02,
   CLEAR_CMD = 0x03,
   SETCOLOR_CMD = 0x04,
-  SETFONT_CMD = 0x05,
-  DRAWRECT_CMD = 0x06
+  // 0x05 was the obsolete global font command; leave it unassigned.
+  DRAWRECT_CMD = 0x06,
+  GLYPH_CMD = 0x07,
+  TARGET_RECT_CMD = 0x08,
+  OVERLAY_PUSH_CMD = 0x09,
+  OVERLAY_POP_CMD = 0x0A,
+  OVERLAY_RESET_CMD = 0x0B,
+  CLIPPED_GLYPH_CMD = 0x0C
 };
 
 enum RemoteInputCommand {
@@ -68,8 +75,6 @@ static GUIEventPadButtonType eventMappingPico[11] = {
   ((color._r & 0b11111000) << 8) | ((color._g & 0b11111100) << 3) |            \
       (color._b >> 3)
 
-void remoteUIFontCommand(uint8_t uifontIndex, char *buffer);
-
 void remoteUIDrawCharCommand(const char c, uint8_t x, uint8_t y, bool invert,
                              char *buffer);
 
@@ -81,5 +86,17 @@ void remoteUIClearCommand(unsigned short r, unsigned short g, unsigned short b,
 
 uint16_t remoteUISetColorCommand(unsigned short r, unsigned short g,
                                  unsigned short b, char *buffer);
+
+// All new payload bytes use escaping (no ASCII offset). Coordinates are pixels,
+// little-endian uint16. Client supplies native fonts and retains overlay
+// backing. Worst-case encoded sizes include marker/command: glyph=34, rect=20,
+// push=18.
+uint16_t remoteUIGlyphCommand(uint8_t target, uint8_t font, uint8_t character,
+                              bool invert, uint16_t x, uint16_t y,
+                              GraphicsRegion clip, bool clipped, char *buffer);
+uint16_t remoteUITargetRectCommand(uint8_t target, GraphicsRegion bounds,
+                                   char *buffer);
+uint16_t remoteUIOverlayCommand(RemoteUICommand command, GraphicsRegion bounds,
+                                char *buffer);
 
 #endif

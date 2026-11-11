@@ -23,6 +23,14 @@
 
 class SelectProjectView : public ScreenView {
 public:
+  TextLayout GetTextLayout() const override {
+    static constexpr TextRegion regions[] = {
+        {8, 4, 704, 24, TEXT_FONT_SMALL},
+        {8, 30, 704, 690, TEXT_FONT_NORMAL},
+    };
+    return {regions, sizeof(regions) / sizeof(regions[0])};
+  }
+
   SelectProjectView(GUIWindow &w, ViewData *viewData);
   ~SelectProjectView();
   void Reset();

@@ -22,7 +22,7 @@ constexpr AudioSample kFeedbackTailThreshold = 0.001f;
 static_assert(DelayOutputEffect::TicksPerStep == SyncMaster::SlicesPerStep,
               "Delay time units must match sequencer audio ticks");
 
-#if defined(ADV) && !defined(HOST_TEST)
+#if defined(ADV) && !defined(HOST_TEST) && !defined(WASM)
 // The fixed delay owns this complete history buffer directly; there is no
 // shared output-effect arena or runtime reservation step.
 __attribute__((aligned(32))) __attribute__((section(".RAM_EXT")))

@@ -21,6 +21,9 @@
 
 class MixerView : public FieldView {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   MixerView(GUIWindow &w, ViewData *viewData);
   ~MixerView();
   void Reset();
@@ -47,13 +50,15 @@ private:
   // FX1 and FX2 remain reserved but are hidden until they have effects.
   static constexpr int MixerEffectRowCount =
       OUTPUT_EFFECT_COUNT - kOutputEffectDelayIndex;
-  static constexpr int MixerRowCount = 1 + MixerEffectRowCount;
+  // Volume, the effect sends and the live line input level
+  static constexpr int MixerRowCount = 2 + MixerEffectRowCount;
   static constexpr int MixerStripCount = SONG_CHANNEL_COUNT + 1;
 
   void drawChannelVUMeters(etl::array<stereosample, SONG_CHANNEL_COUNT> *levels,
                            Player *player, GUITextProperties props,
                            bool forceRedraw = false);
   void initMixerFields();
+  void drawLineInVuMeter(GUITextProperties props, bool forceRedraw);
   void drawMixerLabels(Player *player, GUITextProperties props);
   UIField *GetSelectedField();
   void syncFocusToSelection();
@@ -63,6 +68,7 @@ private:
       channelSendFields_;
   etl::vector<UIIntVarField, OUTPUT_EFFECT_COUNT> fxReturnFields_;
   etl::vector<UIIntVarField, 1> masterVolumeField_;
+  etl::vector<UIIntVarField, 1> lineInMixField_;
   UIField *fieldGrid_[MixerStripCount][MixerRowCount];
   int selectedStrip_;
   int selectedRow_;

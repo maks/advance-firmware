@@ -23,6 +23,7 @@
 #include "Externals/etl/include/etl/string.h"
 #include "Foundation/Types/Types.h"
 #include "I_Action.h"
+#include "UIFramework/BasicDatas/GraphicsRegion.h"
 #include "UIFramework/Interfaces/I_GUIGraphics.h"
 #include "UIFramework/SimpleBaseClasses/GUIWindow.h"
 #include "ViewEvent.h"
@@ -71,7 +72,8 @@ enum ViewType {
   VT_SAMPLE_EDITOR,     // Sample Editor
   VT_SAMPLE_SLICES,     // Sample slice editor
   VT_RECORD,            // Recording screen
-  VT_CREDITS            // Credits screen
+  VT_CREDITS,           // Credits screen
+  VT_NULL               // No project is open
 };
 
 enum ViewMode {
@@ -109,14 +111,48 @@ class ModalView;
 
 using ModalViewCallback = etl::delegate<void(View &v, ModalView &d)>;
 
+// IDs belong to the default application layout, never to the display driver.
+enum ViewTextRegion : uint8_t {
+  TEXT_REGION_HEADER,
+  TEXT_REGION_BODY,
+  TEXT_REGION_MAP,
+  TEXT_REGION_BODY_LOWER,
+  TEXT_REGION_VU,
+  TEXT_REGION_INFO
+};
+
 class View : public Observable {
 public:
   View(GUIWindow &w, ViewData *viewData);
   View(View &v);
 
+  // Override for a screen-specific layout. Called only when entering the
+  // screen; the application installs the returned definition before OnFocus().
+  virtual TextLayout GetTextLayout() const { return GetDefaultTextLayout(); }
+
+  virtual GraphicsLayout GetGraphicsLayout() { return {nullptr, 0}; }
+  void DrawGraphicsRect(uint8_t region, const GUIRect &local,
+                        ColorDefinition color);
+
+  // Main navigation screens share this default. Other screens declare their
+  // own regions in GetTextLayout(), alongside the view that owns the layout.
+  static TextLayout GetDefaultTextLayout() {
+    static constexpr TextRegion regions[] = {
+        {8, 4, 704, 24, TEXT_FONT_SMALL},
+        {8, 90, 692, 510, TEXT_FONT_NORMAL},
+        {8, 600, 80, 120, TEXT_FONT_SMALL},
+        // Next normal column starts at x=96, leaving an 8px gap after the map.
+        {96, 600, 616, 120, TEXT_FONT_NORMAL},
+        {700, 90, 20, 480, TEXT_FONT_TINY},
+        {8, 36, 704, 48, TEXT_FONT_SMALL},
+    };
+    return {regions, sizeof(regions) / sizeof(regions[0])};
+  }
+
   void SetFocus(ViewType vt) {
     viewType_ = vt;
     hasFocus_ = true;
+    mask_ = 0;
     OnFocus();
   };
 
@@ -125,6 +161,7 @@ public:
       return;
     }
     hasFocus_ = false;
+    mask_ = 0;
     OnFocusLost();
   };
 
@@ -164,15 +201,23 @@ public:
   // Char based draw routines
 
   virtual void SetColor(ColorDefinition cd);
-  virtual void ClearTextRect(int x, int y, int w, int h);
-  virtual void DrawString(int x, int y, const char *txt,
-                          const GUITextProperties &props);
+  // Pixel fills for layout backgrounds (for example theme preview gaps).
+  // Graph content uses DrawGraphicsRect with region-local coordinates.
   virtual void DrawRect(GUIRect &r, ColorDefinition color);
+  // Region IDs directly select a fixed local grid; no pixel search at draw
+  // time.
+  void DrawRegionString(uint8_t region, int x, int y, const char *text,
+                        const GUITextProperties &props);
+  void ClearRegionTextRect(uint8_t region, int x, int y, int width, int height);
+  void HighlightSelection(uint8_t region, const GUIRect &cells);
 
   void DoModal(ModalView *view, ModalViewCallback cb = ModalViewCallback());
   void DismissModal();
 
 protected:
+  bool IsButtonHeld(uint16_t button) const {
+    return !modalView_ && (mask_ & button) != 0;
+  }
   virtual void ProcessButtonMask(unsigned short mask, bool pressed) = 0;
 
   // to remove once everything got to viewdata
@@ -193,21 +238,24 @@ protected:
 
   void setTitle(const etl::istring &title);
 
-  GUIPoint GetAnchor();
+  virtual GUIPoint GetAnchor();
   GUIPoint GetTitlePosition();
 
   void drawMap();
   void drawNotes();
-  void drawBattery(GUITextProperties &props);
-  void drawTitlebar(GUITextProperties &props);
-  void printHelpLegend(TrackerCommand command, GUITextProperties props);
+  void drawBattery(uint8_t region, uint8_t columns, GUITextProperties &props);
+  void drawTitlebar(uint8_t region, GUITextProperties &props);
+  void printHelpLegend(uint8_t region, TrackerCommand command,
+                       GUITextProperties props);
   void drawMasterVuMeter(Player *player, GUITextProperties props,
                          bool forceRedraw = false, uint8_t xoffset = 24,
-                         uint8_t meterHeight = VU_METER_HEIGHT);
+                         uint8_t meterHeight = VU_METER_HEIGHT,
+                         bool useMeterRegion = true);
   void drawVUMeter(int32_t leftBars, int32_t rightBars, GUIPoint pos,
                    GUITextProperties props, int vuIndex,
                    bool forceRedraw = false,
-                   uint8_t meterHeight = VU_METER_HEIGHT);
+                   uint8_t meterHeight = VU_METER_HEIGHT,
+                   uint8_t region = TEXT_REGION_BODY);
   void updateDeferredPlayButtonHold();
   void drawPowerButtonUI(GUITextProperties &props);
 
@@ -238,9 +286,14 @@ public: // temp hack for modl windo constructors
   ViewType viewType_;
   bool hasFocus_;
 
-  // Previous VU meter values for optimization (one pair per channel + master)
-  int32_t prevLeftVU_[SONG_CHANNEL_COUNT + 1];
-  int32_t prevRightVU_[SONG_CHANNEL_COUNT + 1];
+  // Previous VU meter values for optimization. Index 0 is the master meter,
+  // the next SONG_CHANNEL_COUNT are the channels and the last one is the live
+  // line input.
+  static constexpr int VU_MASTER_INDEX = 0;
+  static constexpr int VU_LINE_IN_INDEX = SONG_CHANNEL_COUNT + 1;
+  static constexpr int VU_METER_COUNT = SONG_CHANNEL_COUNT + 2;
+  int32_t prevLeftVU_[VU_METER_COUNT];
+  int32_t prevRightVU_[VU_METER_COUNT];
 
   // Power button state
   bool playButtonPressed_;
@@ -257,10 +310,11 @@ private:
   bool handleDeferredPlayButton(uint16_t eventMask, uint16_t heldMask,
                                 bool pressed, bool playReleasedEvent);
 
-  void drawStatusIndicators(GUITextProperties &props);
-  void drawTitle();
+  void drawStatusIndicators(uint8_t region, uint8_t columns,
+                            GUITextProperties &props);
+  void drawTitle(uint8_t region);
 
-  unsigned short mask_;
+  uint16_t mask_; // Current physical buttons, including release events.
   bool locked_;
   static bool initPrivate_;
   ModalView *modalView_;

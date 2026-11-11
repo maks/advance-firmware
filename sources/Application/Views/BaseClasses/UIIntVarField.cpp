@@ -42,7 +42,8 @@ UIIntVarField::UIIntVarField(const GUIPoint &position, Variable &v,
 void UIIntVarField::Draw(GUIWindow &w, int offset) {
 
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   Variable::Type type = src_.GetType();
@@ -99,7 +100,7 @@ void UIIntVarField::Draw(GUIWindow &w, int offset) {
     props.invert_ = true;
     w.DrawString(buffer, position, props);
   } else {
-    DrawLabeledField(w, position, buffer);
+    DrawLabeledField(w, position, buffer, props);
   }
 };
 

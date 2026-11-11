@@ -1543,13 +1543,8 @@ void PhraseView::setTextProps(GUITextProperties &props, int row, int col,
 
   bool invert = false;
 
-  if (clipboard_.active_) {
-    GUIRect selRect = getSelectionRect();
-    if ((row >= selRect.Left()) && (row <= selRect.Right()) &&
-        (col >= selRect.Top()) && (col <= selRect.Bottom())) {
-      invert = true;
-    }
-  } else {
+  // Block selections are styled once after all ordinary fields are drawn.
+  if (!clipboard_.active_) {
     if ((col_ == row) && (row_ == col)) {
       invert = true;
     }
@@ -1566,14 +1561,36 @@ void PhraseView::setTextProps(GUITextProperties &props, int row, int col,
   }
 };
 
+void PhraseView::drawInstrumentInfo() {
+  GUITextProperties props;
+  SetColor(CD_NORMAL);
+  InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
+  uint8_t currentInstr = 0xFF;
+  if (bank && getEffectiveInstrumentForRow(row_, currentInstr)) {
+    I_Instrument *instr = bank->GetInstrument(currentInstr);
+    if (instr) {
+      char instrId[5];
+      formatInstrumentId(instrId, sizeof(instrId), bank, currentInstr);
+      etl::string<SCREEN_WIDTH> instrLine;
+      instrLine += instrId;
+      instrLine += " ";
+      instrLine += instr->GetDisplayName();
+
+      setTextProps(props, 1, row_, true);
+      DrawRegionString(TEXT_REGION_INFO, 0, 0, instrLine.c_str(), props);
+    }
+  }
+}
+
 void PhraseView::DrawView() {
 
   Clear();
+  commandHelp_.Reset();
 
   GUITextProperties props;
   GUIPoint pos = GetTitlePosition();
 
-  // Draw title (help text will overwrite it when cursor is on a command column)
+  // Draw title; held command help uses the separate information region.
   etl::string<23> title("Phrase ");
   etl::format_spec format;
   format.width(2).fill('0').hex().upper_case(true);
@@ -1593,7 +1610,7 @@ void PhraseView::DrawView() {
   for (int j = 0; j < 16; j++) {
     ((j / ALT_ROW_NUMBER) % 2) ? SetColor(CD_ACCENT) : SetColor(CD_ACCENTALT);
     hex2char(j, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     pos._y++;
   }
 
@@ -1619,9 +1636,9 @@ void PhraseView::DrawView() {
     (0 == j || 4 == j || 8 == j || 12 == j) ? SetColor(CD_HILITE1)
                                             : SetColor(CD_NORMAL);
     if (d == NO_NOTE) {
-      DrawString(pos._x, pos._y, "----", props);
+      DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "----", props);
     } else if (d == NOTE_OFF) {
-      DrawString(pos._x, pos._y, "REL ", props);
+      DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "REL ", props);
     } else {
       bool showSlice = false;
       bool invalidSlice = false;
@@ -1662,7 +1679,7 @@ void PhraseView::DrawView() {
       } else {
         note2char(d, buffer);
       }
-      DrawString(pos._x, pos._y, buffer, props);
+      DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     }
     setTextProps(props, 0, j, true);
     pos._y++;
@@ -1678,30 +1695,16 @@ void PhraseView::DrawView() {
     unsigned char d = *data++;
     setTextProps(props, 1, j, false);
     if (d == 0xFF) {
-      DrawString(pos._x, pos._y, "I--", props);
+      DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "I--", props);
     } else {
       formatInstrumentId(buffer, sizeof(buffer), bank, d);
-      DrawString(pos._x, pos._y, buffer, props);
+      DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     }
     setTextProps(props, 1, j, true);
     pos._y++;
   }
 
-  uint8_t currentInstr = 0xFF;
-  if (bank && getEffectiveInstrumentForRow(row_, currentInstr)) {
-    I_Instrument *instr = bank->GetInstrument(currentInstr);
-    if (instr) {
-      char instrId[5];
-      formatInstrumentId(instrId, sizeof(instrId), bank, currentInstr);
-      etl::string<SCREEN_WIDTH> instrLine;
-      instrLine += instrId;
-      instrLine += " ";
-      instrLine += instr->GetDisplayName();
-
-      setTextProps(props, 1, row_, true);
-      DrawString(0, 1, instrLine.c_str(), props);
-    }
-  }
+  drawInstrumentInfo();
 
   // Draw command 1
 
@@ -1713,12 +1716,9 @@ void PhraseView::DrawView() {
   for (int j = 0; j < 16; j++) {
     TrackerCommand command = *f++;
     setTextProps(props, 2, j, false);
-    DrawString(pos._x, pos._y, command.c_str(), props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, command.c_str(), props);
     setTextProps(props, 2, j, true);
     pos._y++;
-    if (j == row_ && (col_ == 2 || col_ == 3)) {
-      printHelpLegend(command, props);
-    }
   }
 
   // Draw commands params 1
@@ -1733,11 +1733,11 @@ void PhraseView::DrawView() {
     ushort p = *param++;
     setTextProps(props, 3, j, false);
     /*		if (p==0xFFFF) {
-                            DrawString(pos._x,pos._y,"----",props) ;
-                    } else {
+                            DrawRegionString(TEXT_REGION_BODY,
+       pos._x,pos._y,"----",props) ; } else {
     */
     hexshort2char(p, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     /*		}
      */
     setTextProps(props, 3, j, true);
@@ -1754,12 +1754,9 @@ void PhraseView::DrawView() {
   for (int j = 0; j < 16; j++) {
     TrackerCommand command = *f++;
     setTextProps(props, 4, j, false);
-    DrawString(pos._x, pos._y, command.c_str(), props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, command.c_str(), props);
     setTextProps(props, 4, j, true);
     pos._y++;
-    if (j == row_ && (col_ == 4 || col_ == 5)) {
-      printHelpLegend(command, props);
-    }
   }
 
   // Draw commands params
@@ -1774,16 +1771,31 @@ void PhraseView::DrawView() {
     ushort p = *param++;
     setTextProps(props, 5, j, false);
     /*		if (p==0xFFFF) {
-                            DrawString(pos._x,pos._y,"----",props) ;
-                    } else {
+                            DrawRegionString(TEXT_REGION_BODY,
+       pos._x,pos._y,"----",props) ; } else {
     */
     hexshort2char(p, buffer);
-    DrawString(pos._x, pos._y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, buffer, props);
     /*		}
      */
     setTextProps(props, 5, j, true);
     pos._y++;
   }
+
+  if (clipboard_.active_) {
+    // Logical fields have different widths; include only separators BETWEEN
+    // selected fields, never padding beyond either outer selection edge.
+    static constexpr uint8_t starts[] = {0, 4, 8, 12, 17, 21};
+    static constexpr uint8_t ends[] = {4, 7, 11, 16, 20, 25};
+    const GUIRect selected = getSelectionRect();
+    HighlightSelection(TEXT_REGION_BODY,
+                       GUIRect(anchor._x + starts[selected.Left()],
+                               anchor._y + selected.Top(),
+                               anchor._x + ends[selected.Right()],
+                               anchor._y + selected.Bottom() + 1));
+  }
+
+  drawMasterVuMeter(Player::GetInstance(), props, true);
 
   drawMap();
   drawNotes();
@@ -1819,16 +1831,24 @@ void PhraseView::AnimationUpdate() {
   // First call the parent class implementation to draw the battery gauge
   ScreenView::AnimationUpdate();
 
-  // Redraw help legend if cursor is on a command column (ScreenView::
-  // AnimationUpdate redraws the title bar which overwrites it)
-  if (col_ >= 2 && col_ <= 5) {
+  // Help is transient while ENTER is held on a command or its parameter.
+  // Only transitions repaint the information region; the title is independent.
+  TrackerCommand command = TrackerCommand::InstrumentCommandNone;
+  if (IsButtonHeld(EPBM_ENTER) && col_ >= 2 && col_ <= 5) {
+    const int index = 16 * viewData_->currentPhrase_ + row_;
+    command = col_ < 4 ? phrase_->cmd1_[index] : phrase_->cmd2_[index];
+  }
+  const auto helpChange =
+      commandHelp_.Update(IsButtonHeld(EPBM_ENTER), command);
+  if (helpChange == CommandHelpState::Change::Show) {
     GUITextProperties props;
-    TrackerCommand cmd =
-        *(phrase_->cmd1_ + (16 * viewData_->currentPhrase_ + row_));
-    if (col_ >= 4) {
-      cmd = *(phrase_->cmd2_ + (16 * viewData_->currentPhrase_ + row_));
-    }
-    printHelpLegend(cmd, props);
+    printHelpLegend(TEXT_REGION_INFO, command, props);
+  } else if (helpChange == CommandHelpState::Change::Hide) {
+    const TextRegionInfo *info =
+        static_cast<AppWindow &>(w_).GetTextRegion(TEXT_REGION_INFO);
+    if (info)
+      ClearRegionTextRect(TEXT_REGION_INFO, 0, 0, info->columns, info->rows);
+    drawInstrumentInfo();
   }
 
   // Get player instance safely
@@ -1841,7 +1861,7 @@ void PhraseView::AnimationUpdate() {
 
   GUITextProperties props;
   // Always update VU meter even if other parts of UI dont need updating
-  drawMasterVuMeter(player, props, false, 25);
+  drawMasterVuMeter(player, props);
 
   // Handle any pending updates from OnPlayerUpdate using the consolidated flag
   // This ensures all UI drawing happens on the "main" thread (core0)
@@ -1858,7 +1878,7 @@ void PhraseView::AnimationUpdate() {
 
     // Clear last played position
     pos._y = anchor._y + lastPlayingPos_;
-    DrawString(pos._x, pos._y, " ", props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, " ", props);
 
     // Only update play position if player is running
     if (player->IsRunning()) {
@@ -1871,10 +1891,10 @@ void PhraseView::AnimationUpdate() {
             pos._y = anchor._y + viewData_->phrasePlayPos_[i];
             if (!player->IsChannelMuted(i)) {
               SetColor(CD_ACCENT);
-              DrawString(pos._x, pos._y, ">", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, ">", props);
             } else {
               SetColor(CD_ACCENTALT);
-              DrawString(pos._x, pos._y, "-", props);
+              DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "-", props);
             }
             SetColor(CD_CURSOR);
             lastPlayingPos_ = viewData_->phrasePlayPos_[i];
@@ -1899,7 +1919,8 @@ void PhraseView::AnimationUpdate() {
               viewData_->song_->data_ + i + SONG_CHANNEL_COUNT * songPos;
           if (*chain == viewData_->currentChain_) {
             const char *indicator = player->GetLiveIndicator(i);
-            DrawString(pos._x, pos._y, indicator, props);
+            DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, indicator,
+                             props);
             break;
           }
         }

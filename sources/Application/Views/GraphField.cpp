@@ -32,27 +32,19 @@ GraphField::GraphField(GUIPoint &position, int32_t width, int32_t height)
 }
 
 void GraphField::Draw(GUIWindow &w, int offset) {
-  int32_t x = x_;
-  int32_t y = static_cast<int32_t>(y_) + offset;
-  int32_t right = x + width_;
-  int32_t bottom = y + height_;
-
-  ColorDefinition borderColor = focus_ ? borderFocused_ : borderNormal_;
-  w.SetCurrentRectColor(AppWindow::GetColor(borderColor));
-  GUIRect top(x, y, right, y + 1);
-  GUIRect bottomLine(x, bottom - 1, right, bottom);
-  GUIRect left(x, y, x + 1, bottom);
-  GUIRect rightLine(right - 1, y, right, bottom);
-  w.DrawRect(top);
-  w.DrawRect(bottomLine);
-  w.DrawRect(left);
-  w.DrawRect(rightLine);
-  w.SetCurrentRectColor(AppWindow::GetColor(CD_NORMAL));
+  auto &window = static_cast<AppWindow &>(w);
+  ColorDefinition color = focus_ ? borderFocused_ : borderNormal_;
+  window.DrawGraphicsRect(0, GUIRect(0, offset, width_, offset + 1), color);
+  window.DrawGraphicsRect(
+      0, GUIRect(0, offset + height_ - 1, width_, offset + height_), color);
+  window.DrawGraphicsRect(0, GUIRect(0, offset, 1, offset + height_), color);
+  window.DrawGraphicsRect(
+      0, GUIRect(width_ - 1, offset, width_, offset + height_), color);
 }
 
 GUIPoint GraphField::GetPosition() {
   return GUIPoint(static_cast<int32_t>(x_) / CHAR_WIDTH,
-                  static_cast<int32_t>(y_) / CHAR_HEIGHT);
+                  static_cast<int32_t>(y_) / CHAR_HEIGHT - 1);
 }
 
 void GraphField::Reset() {
@@ -269,25 +261,29 @@ int32_t GraphField::SampleToPixel(uint32_t sample) const {
   uint32_t rel = clamped - viewStart_;
   int32_t local = static_cast<int32_t>(
       (static_cast<uint64_t>(rel) * (width_ - 2)) / viewSpan);
-  return static_cast<int32_t>(x_) + 1 + local;
+  return 1 + local;
 }
 
 void GraphField::DrawGraph(View &view) {
+  // A real framebuffer clear invalidates pixels but not the RMS/sample cache.
+  // Overlay restoration does not change this revision or force a graph redraw.
+  const uint32_t revision = AppWindow::GetInstance()->GraphicsRevision();
+  if (graphicsRevision_ != revision) {
+    graphicsRevision_ = revision;
+    needsFullRedraw_ = true;
+  }
   if (needsFullRedraw_) {
-    GUIRect area(static_cast<int32_t>(x_) + 1, static_cast<int32_t>(y_) + 1,
-                 static_cast<int32_t>(x_) + width_ - 1,
-                 static_cast<int32_t>(y_) + height_ - 1);
-    view.DrawRect(area, CD_BACKGROUND);
+    GUIRect area(1, 1, width_ - 1, height_ - 1);
+    view.DrawGraphicsRect(0, area, CD_BACKGROUND);
 
     if (showBaseline_) {
-      int32_t centerY = static_cast<int32_t>(y_) + height_ / 2;
-      GUIRect baseline(static_cast<int32_t>(x_) + 1, centerY,
-                       static_cast<int32_t>(x_) + width_ - 1, centerY + 1);
-      view.DrawRect(baseline, CD_HILITE2);
+      int32_t centerY = height_ / 2;
+      GUIRect baseline(1, centerY, width_ - 1, centerY + 1);
+      view.DrawGraphicsRect(0, baseline, CD_HILITE2);
     }
 
     if (waveformValid_ && hasValidWindow()) {
-      int32_t centerY = static_cast<int32_t>(y_) + height_ / 2;
+      int32_t centerY = height_ / 2;
       int32_t drawableWidth = width_ - 2;
       int32_t maxColumns =
           std::min<int32_t>(drawableWidth, static_cast<int32_t>(CacheSize));
@@ -298,15 +294,14 @@ void GraphField::DrawGraph(View &view) {
         }
         int32_t startY = centerY - amplitude / 2;
         int32_t endY = startY + amplitude;
-        if (startY < static_cast<int32_t>(y_) + 1) {
-          startY = static_cast<int32_t>(y_) + 1;
+        if (startY < 1) {
+          startY = 1;
         }
-        if (endY > static_cast<int32_t>(y_) + height_ - 2) {
-          endY = static_cast<int32_t>(y_) + height_ - 2;
+        if (endY > height_ - 2) {
+          endY = height_ - 2;
         }
-        GUIRect column(static_cast<int32_t>(x_) + 1 + x, startY,
-                       static_cast<int32_t>(x_) + 2 + x, endY);
-        view.DrawRect(column, CD_NORMAL);
+        GUIRect column(1 + x, startY, 2 + x, endY);
+        view.DrawGraphicsRect(0, column, CD_NORMAL);
       }
     }
 
@@ -394,25 +389,24 @@ void GraphField::DrawGraph(View &view) {
 }
 
 void GraphField::redrawWaveformColumn(View &view, int32_t x) {
-  int32_t left = static_cast<int32_t>(x_);
-  int32_t right = static_cast<int32_t>(x_) + width_ - 1;
+  int32_t left = 0;
+  int32_t right = width_ - 1;
   if (x <= left || x >= right) {
     return;
   }
-  GUIRect clearRect(x, static_cast<int32_t>(y_) + 1, x + 1,
-                    static_cast<int32_t>(y_) + height_ - 1);
-  view.DrawRect(clearRect, CD_BACKGROUND);
+  GUIRect clearRect(x, 1, x + 1, height_ - 1);
+  view.DrawGraphicsRect(0, clearRect, CD_BACKGROUND);
 
   if (showBaseline_) {
-    int32_t centerY = static_cast<int32_t>(y_) + height_ / 2;
+    int32_t centerY = height_ / 2;
     GUIRect baseline(x, centerY, x + 1, centerY + 1);
-    view.DrawRect(baseline, CD_HILITE2);
+    view.DrawGraphicsRect(0, baseline, CD_HILITE2);
   }
 
   if (!waveformValid_ || !hasValidWindow()) {
     return;
   }
-  int32_t cacheIndex = x - static_cast<int32_t>(x_) - 1;
+  int32_t cacheIndex = x - 0 - 1;
   if (cacheIndex < 0 || cacheIndex >= CacheSize) {
     return;
   }
@@ -420,26 +414,26 @@ void GraphField::redrawWaveformColumn(View &view, int32_t x) {
   if (amplitude == 0) {
     return;
   }
-  int32_t centerY = static_cast<int32_t>(y_) + height_ / 2;
+  int32_t centerY = height_ / 2;
   int32_t startY = centerY - amplitude / 2;
   int32_t endY = startY + amplitude;
-  if (startY < static_cast<int32_t>(y_) + 1) {
-    startY = static_cast<int32_t>(y_) + 1;
+  if (startY < 1) {
+    startY = 1;
   }
-  if (endY > static_cast<int32_t>(y_) + height_ - 2) {
-    endY = static_cast<int32_t>(y_) + height_ - 2;
+  if (endY > height_ - 2) {
+    endY = height_ - 2;
   }
   GUIRect column(x, startY, x + 1, endY);
-  view.DrawRect(column, CD_NORMAL);
+  view.DrawGraphicsRect(0, column, CD_NORMAL);
 }
 
 void GraphField::drawMarker(View &view, int32_t x, ColorDefinition color,
                             MarkerStyle style) {
-  int32_t top = static_cast<int32_t>(y_) + 2;
-  int32_t bottom = static_cast<int32_t>(y_) + height_ - 2;
+  int32_t top = 2;
+  int32_t bottom = height_ - 2;
   if (style == MarkerStyle::Solid) {
     GUIRect marker(x, top, x + 1, bottom);
-    view.DrawRect(marker, color);
+    view.DrawGraphicsRect(0, marker, color);
     return;
   }
 
@@ -448,7 +442,7 @@ void GraphField::drawMarker(View &view, int32_t x, ColorDefinition color,
   for (int32_t y = top; y < bottom; y += DashHeight + DashGap) {
     int32_t dashBottom = std::min(y + DashHeight, bottom);
     GUIRect marker(x, y, x + 1, dashBottom);
-    view.DrawRect(marker, color);
+    view.DrawGraphicsRect(0, marker, color);
   }
 }
 

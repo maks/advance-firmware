@@ -25,7 +25,8 @@ UIStaticField::UIStaticField(const GUIPoint &position, const char *string,
 void UIStaticField::Draw(GUIWindow &w, int offset) {
 
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   ((AppWindow &)w).SetColor(color_);

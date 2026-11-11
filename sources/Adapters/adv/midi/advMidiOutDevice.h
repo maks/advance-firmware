@@ -12,7 +12,9 @@
 #ifndef _ADVMIDIDEVICE_H_
 #define _ADVMIDIDEVICE_H_
 
+#include "FreeRTOS.h"
 #include "Services/Midi/MidiOutDevice.h"
+#include "semphr.h"
 
 class advMidiOutDevice : public MidiOutDevice {
 public:
@@ -29,5 +31,7 @@ protected:
   virtual void SendRawBytes(const uint8_t *data, uint8_t len);
 
 private:
+  StaticSemaphore_t transmitMutexStorage_{};
+  SemaphoreHandle_t transmitMutex_;
 };
 #endif

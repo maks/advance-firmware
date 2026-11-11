@@ -1,7 +1,4 @@
 ---
-title: Getting Started
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause AND GPL-3.0-only
 
@@ -12,6 +9,10 @@ New original contributions by xiphonics, inc. are GPL-3.0-only.
 Previously granted BSD permissions are preserved. See LICENSING.md.
 -->
 
+
+title: Getting Started
+template: page
+---
 
 ## Start Up
 
@@ -65,7 +66,7 @@ For a list of all the controls, see the [Controls & Moves reference](keypadcombo
 
 When selecting a sample wav file or project file you enter the file browser view.
 
-When in the Project File Browser view, use the arrow keys <span class="minikeys">UP</span>/<span class="minikeys">Down</span> to navigate through the list of project available and press <span class="minikeys">ENTER</span> to open the currently selected (highlighted) a project. You can page through the list using <span class="minikeys">EDIT</span>+<span class="minikeys">UP</span>/<span class="minikeys">DOWN</span>.
+When in the Project File Browser view, use the arrow keys <span class="minikeys">UP</span>/<span class="minikeys">Down</span> to navigate through the list of project available and press <span class="minikeys">ENTER</span> to open the currently selected (highlighted) a project. You can page through the list using <span class="minikeys">EDIT</span>+<span class="minikeys">UP</span>/<span class="minikeys">DOWN</span>. 
 
 When in the wave sample File Browser, use the arrow keys <span class="minikeys">UP</span>/<span class="minikeys">DOWN</span> to navigate through the list of available sample files and subdirectories, subdirectories are indicated with a `/` prefix. You can page through the list using <span class="minikeys">EDIT</span>+<span class="minikeys">UP</span>/<span class="minikeys">DOWN</span>. Press <span class="minikeys">ENTER</span> to enter a subdirectory, you can go back to the parent directory by navigating to the `[up]` entry and pressing <span class="minikeys">ENTER</span> or by pressing <span class="minikeys">NAV</span>+<span class="minikeys">UP</span>. Press <span class="minikeys">PLAY</span> to audition the currently selected sample wave file. To import the currently selected wave file press <span class="minikeys">ALT</span>+<span class="minikeys">PLAY</span>. At any time, you can return to the instrument screen from the sample file browser by pressing <span class="minikeys">NAV</span>+<span class="minikeys">LEFT</span>.
 

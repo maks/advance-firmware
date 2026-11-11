@@ -7,6 +7,7 @@
 # Previously granted BSD permissions are preserved. See LICENSING.md.
 
 add_library(application_mixer
+  LineInMixer.cpp
   MixBus.cpp
   MixerService.cpp
 )

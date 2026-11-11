@@ -1,7 +1,4 @@
 ---
-title: FX Commands Reference
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause AND GPL-3.0-only
 
@@ -12,6 +9,10 @@ New original contributions by xiphonics, inc. are GPL-3.0-only.
 Previously granted BSD permissions are preserved. See LICENSING.md.
 -->
 
+
+title: FX Commands Reference
+template: page
+---
 
 There can be upto two commands on every row of the phrase screen and upto three on a row in a table. Commands which effect instruments can be run on any step of the instruments playback, including the step where the instrument is triggered.
 

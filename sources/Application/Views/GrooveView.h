@@ -15,6 +15,9 @@
 
 class GrooveView : public ScreenView {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   GrooveView(GUIWindow &w, ViewData *viewData);
   ~GrooveView();
   void Reset();

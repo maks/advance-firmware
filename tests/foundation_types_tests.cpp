@@ -9,7 +9,6 @@
  */
 
 #include "doctest/doctest.h"
-
 #include "Foundation/Types/Types.h"
 #include <cstring>
 

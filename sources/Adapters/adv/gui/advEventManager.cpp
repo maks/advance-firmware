@@ -524,8 +524,16 @@ void ProcessEvent(void *) {
 
 void USBDevice(void *) {
   UsbRoleSwitchController controller = makeUsbRoleSwitchController();
+  UBaseType_t taskPriority = tskIDLE_PRIORITY + 2;
   for (;;) {
     serviceUsbRoleSwitchController(controller);
+    // Device isochronous packets must be re-armed ahead of mixer preparation
+    // (priority 6). Host/disconnected modes retain their existing priority.
+    const UBaseType_t desiredPriority = tud_inited() ? 7 : tskIDLE_PRIORITY + 2;
+    if (desiredPriority != taskPriority) {
+      taskPriority = desiredPriority;
+      vTaskPrioritySet(nullptr, taskPriority);
+    }
     handleUSBInterrupts();
     pumpUSBMidiTxQueue();
   }

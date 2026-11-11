@@ -225,14 +225,13 @@ void SelectProjectView::DrawView() {
   Clear();
 
   GUITextProperties props;
-  GUIPoint pos = GetTitlePosition();
 
   // Draw title
   setTitle(etl::string<23>("Browse Projects"));
 
   // Draw projects
   int x = 1;
-  int y = pos._y + 2;
+  int y = 1;
 
   auto var = viewData_->project_->FindVariable(FourCC::VarProjectName);
   etl::string<MAX_PROJECT_NAME_LENGTH> projectName = var->GetString();
@@ -263,10 +262,10 @@ void SelectProjectView::DrawView() {
 
     if (strcmp(buffer, currentProject) == 0) {
       // mark currently loaded project
-      DrawString(x - 1, y, "*", props);
+      DrawRegionString(TEXT_REGION_BODY, x - 1, y, "*", props);
     }
 
-    DrawString(x, y, buffer, props);
+    DrawRegionString(TEXT_REGION_BODY, x, y, buffer, props);
     y += 1;
   };
 
@@ -279,7 +278,7 @@ void SelectProjectView::DrawView() {
     bool selected = selectedButton_ == n;
     props.invert_ = selected;
     SetColor(selected ? CD_HILITE2 : CD_HILITE1);
-    DrawString(x, SCREEN_HEIGHT - 1, buttons[n], props);
+    DrawRegionString(TEXT_REGION_BODY, x, SCREEN_HEIGHT - 2, buttons[n], props);
 
     x += 2 + strlen(buttons[n]);
   }
@@ -312,9 +311,9 @@ void SelectProjectView::DrawScrollBar() {
                thumbSize, maxScroll, thumbPos);
   for (int y = 0; y < LIST_PAGE_SIZE; y++) {
     bool thumb = y >= thumbPos && y < thumbPos + thumbSize;
-    DrawString(SCREEN_WIDTH - 1, 2 + y,
-               thumb ? char_block_full_s : char_border_single_vertical_s,
-               props);
+    DrawRegionString(TEXT_REGION_BODY, SCREEN_WIDTH - 1, 1 + y,
+                     thumb ? char_block_full_s : char_border_single_vertical_s,
+                     props);
   }
 }
 

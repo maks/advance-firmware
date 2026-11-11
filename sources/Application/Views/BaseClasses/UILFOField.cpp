@@ -67,13 +67,14 @@ UILFOField::UILFOField(const GUIPoint &position,
 
 void UILFOField::Draw(GUIWindow &w, int offset) {
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   const LFOSettings *settings = voiceParameters_.GetLFOSettings();
   if (!settings) {
     char unavailable[] = "LFO n/a";
-    DrawLabeledField(w, position, unavailable);
+    DrawLabeledField(w, position, unavailable, props);
     return;
   }
 
@@ -117,7 +118,7 @@ void UILFOField::Draw(GUIWindow &w, int offset) {
     props.invert_ = true;
     w.DrawString(buffer, position, props);
   } else {
-    DrawLabeledField(w, position, buffer);
+    DrawLabeledField(w, position, buffer, props);
   }
 }
 

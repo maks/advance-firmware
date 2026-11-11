@@ -24,8 +24,10 @@ UIActionField::~UIActionField(){};
 void UIActionField::Draw(GUIWindow &w, int offset) {
 
   GUITextProperties props;
+  props.region_ = GetTextRegion();
 
-  GUIPoint position(x_, y_ + offset);
+  GUIPoint position = GetTextPosition();
+  position._y += offset;
 
   if (focus_) {
     ((AppWindow &)w).SetColor(CD_HILITE2);

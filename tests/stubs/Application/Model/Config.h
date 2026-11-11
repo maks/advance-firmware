@@ -8,10 +8,6 @@
  * Previously granted BSD permissions are preserved. See LICENSING.md.
  */
 
-/*
- * Host-test wrapper that keeps the stub include path stable while using the
- * real Config implementation everywhere in the unified test binary.
- */
 #ifndef _HOST_TEST_CONFIG_WRAPPER_H_
 #define _HOST_TEST_CONFIG_WRAPPER_H_
 

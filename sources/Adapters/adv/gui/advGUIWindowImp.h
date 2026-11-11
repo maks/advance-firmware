@@ -46,7 +46,11 @@ protected:
   virtual void Update(Observable &o, I_ObservableData *d);
 
 private:
-  void SendFont(uint8_t uifontIndex);
+  void SendRect(GraphicsRegion bounds);
+  static void ObserveOverlay(DisplayOverlayEvent event, GraphicsRegion bounds);
+  void SendGlyph(uint8_t target, uint8_t font, uint8_t c, bool invert,
+                 GraphicsRegion glyph, GraphicsRegion clip);
+
   bool remoteUIEnabled_ = 0;
 
   // buffer remoteUI draw cmds for better USB CDC perf

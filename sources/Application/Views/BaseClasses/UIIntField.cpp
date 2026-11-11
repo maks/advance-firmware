@@ -30,7 +30,8 @@ UIIntField::UIIntField(const GUIPoint &position, int *src, const char *format,
 void UIIntField::Draw(GUIWindow &w) {
 
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
 
   // ensure max field length
   char buffer[MAX_FIELD_WIDTH + 1];
@@ -42,7 +43,7 @@ void UIIntField::Draw(GUIWindow &w) {
     props.invert_ = true;
     w.DrawString(buffer, position, props);
   } else {
-    DrawLabeledField(w, position, buffer);
+    DrawLabeledField(w, position, buffer, props);
   }
 };
 

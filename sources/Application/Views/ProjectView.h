@@ -48,6 +48,9 @@ private:
 
 class ProjectView : public FieldView, public I_Observer {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   ProjectView(GUIWindow &w, ViewData *data);
   virtual ~ProjectView();
   void Reset();

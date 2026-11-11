@@ -22,6 +22,8 @@
 #include "Foundation/T_Factory.h"
 #include "config/StringLimits.h"
 
+class LineInSource;
+
 class Audio : public T_Factory<Audio> {
 public:
   static constexpr size_t MaxAudioOuts = 4;
@@ -33,6 +35,10 @@ public:
   virtual int GetSampleRate() { return kAudioSampleRateHz; };
   virtual int GetMixerVolume() { return 100; };
   virtual void SetMixerVolume(int volume){};
+
+  // Live converter frames for the line input mix, or nullptr when the platform
+  // has no line input to offer.
+  virtual LineInSource *GetLineInSource() { return nullptr; };
 
   const char *GetAudioAPI();
   const char *GetAudioDevice();

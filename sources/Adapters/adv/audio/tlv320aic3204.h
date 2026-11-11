@@ -32,6 +32,8 @@ extern "C" {
 void tlv320_init();
 
 void tlv320_select_output(void);
+// Nonblocking request; the output task applies routing and de-pop delays.
+void tlv320_set_analog_output_enabled(bool enabled);
 void tlv320_set_volume(uint8_t);
 uint8_t tlv320_get_volume(void);
 bool tlv320_is_initialized(void);

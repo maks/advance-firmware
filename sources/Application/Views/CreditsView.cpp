@@ -42,16 +42,16 @@ void CreditsView::DrawView() {
     if (lineIndex >= static_cast<int32_t>(kCreditsLineCount)) {
       break;
     }
-    DrawString(0, i + 1, kCreditsLines[lineIndex], props);
+    DrawRegionString(TEXT_REGION_BODY, 0, i, kCreditsLines[lineIndex], props);
   }
 
   // Draw the OK button at the bottom (y=21, one line below the text block).
   static const char *buttonText = "Ok";
-  int32_t y = kCreditsVisibleLines + 1;
+  int32_t y = kCreditsVisibleLines;
   int32_t x = (SCREEN_WIDTH - static_cast<int32_t>(strlen(buttonText))) / 2;
   SetColor(CD_HILITE2);
   props.invert_ = true;
-  DrawString(x, y, buttonText, props);
+  DrawRegionString(TEXT_REGION_BODY, x, y, buttonText, props);
   props.invert_ = false;
 }
 
@@ -98,6 +98,6 @@ void CreditsView::OnFocus() {
 
 void CreditsView::AnimationUpdate() {
   GUITextProperties props;
-  drawTitlebar(props);
+  drawTitlebar(TEXT_REGION_HEADER, props);
   drawPowerButtonUI(props);
 }

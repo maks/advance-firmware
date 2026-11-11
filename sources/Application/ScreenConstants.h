@@ -24,8 +24,7 @@
 // Battery gauge width (in characters)
 #define BATTERY_GAUGE_WIDTH 5
 
-// Derived constants
-#define SCREEN_CHARS (SCREEN_WIDTH * SCREEN_HEIGHT)
+// Text-cell totals are determined by the active region layout.
 
 // Maximum field width for UI fields
 #define MAX_FIELD_WIDTH 26

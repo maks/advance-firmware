@@ -4,9 +4,6 @@
  * Copyright (c) 2026 xiphonics, inc.
  */
 
-/*
- * Test stub for host-only builds.
- */
 #ifndef _AUDIO_H_
 #define _AUDIO_H_
 

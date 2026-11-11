@@ -55,12 +55,13 @@ public:
 
   virtual bool Interlaced() = 0;
   virtual int GetPlayedBufferPercentage() = 0;
+  virtual void OnAudioActive(bool active) { (void)active; }
 
   virtual double GetStreamTime() = 0; // in secs
 
   // Silence only the queued physical output, preserving the rendered samples.
-  void AddBuffer(short *buffer, int size,
-                 bool silenceOutput = false); // samples
+  virtual void AddBuffer(short *buffer, int size,
+                         bool silenceOutput = false); // samples
 
   AudioSettings GetAudioSettings();
 

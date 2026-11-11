@@ -1,13 +1,14 @@
 ---
-title: MIDI Control Surfaces
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause
 
 Copyright (c) 2026 xiphonics, inc.
 -->
 
+
+title: MIDI Control Surfaces
+template: page
+---
 
 ## Overview
 

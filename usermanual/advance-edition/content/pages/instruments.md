@@ -1,7 +1,4 @@
 ---
-title: Instruments
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause AND GPL-3.0-only
 
@@ -12,6 +9,10 @@ New original contributions by xiphonics, inc. are GPL-3.0-only.
 Previously granted BSD permissions are preserved. See LICENSING.md.
 -->
 
+
+title: Instruments
+template: page
+---
 
 ## Instrument Types
 
@@ -123,6 +124,8 @@ Press <span class="minikeys">NAV</span>+<span class="minikeys">RIGHT</span> from
   | **Typ** | Type | `spd`, `syn` |
   | **Spd** | Speed | `00`-`FF` in `spd` mode, or `4/1`, `2/1`, `1/1`, `1/2`, `1/4`, `1/8`, `1/16`, `1/32`, `1/2T`, `1/4T`, `1/8T`, `1/16T` in `syn` mode |
   | **Lvl** | Level | `00`-`FF`, clamped to the selected target's range |
+
+LFO speeds: In Spd mode, the LFO rate ranges from 0.01 Hz to 15 Hz, one cycle every 100 seconds at the slow end and about 67 milliseconds at the fast end. The `00`–`FF` value maps logarithmically across that range; the default value (`A0`) is about 1 Hz.
 
 ## Original Sample Instrument
 
@@ -240,7 +243,7 @@ The Import View includes a convenient way to adjust the volume when previewing s
 - **<span class="minikeys">ENTER</span> + <span class="minikeys">UP</span> / <span class="minikeys">DOWN</span>**: Increase / decrease preview volume by 5%
 - **<span class="minikeys">ENTER</span> + <span class="minikeys">RIGHT</span> / <span class="minikeys">LEFT</span>**: Increase / decrease preview volume by 1%
 
-The current preview volume is always displayed on the Vol button and in the status bar at the bottom of the screen alongside the file size information.
+The current preview volume is always displayed on the Vol button and in the status bar at the bottom of the screen alongside the file size information. 
 
 The preview volume uses a non-linear (quadratic) scale that provides more precise control at lower volumes, making it easier to fine-tune quiet previews. This setting is saved with your project and will be restored when you reload it.
 

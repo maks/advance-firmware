@@ -14,12 +14,19 @@
 #include "Externals/SRC/common.h"
 #include "System/Console/Trace.h"
 #include "System/FileSystem/I_File.h"
+#include <cstring>
 
 namespace {
 
 constexpr uint16_t WAV_FORMAT_PCM = 0x0001;
 constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 0x0003;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
+constexpr uint8_t WAV_SUBFORMAT_PCM[16] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                           0x10, 0x00, 0x80, 0x00, 0x00, 0xAA,
+                                           0x00, 0x38, 0x9B, 0x71};
+constexpr uint8_t WAV_SUBFORMAT_IEEE_FLOAT[16] = {
+    0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+    0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71};
 
 bool UpdateFileSizeAtOffsets(I_File *file, uint32_t sampleCount,
                              uint16_t channels, uint16_t bytesPerSample,
@@ -284,11 +291,15 @@ WavHeaderWriter::ReadHeader(I_File *file) {
     (void)validBitsPerSample;
     (void)channelMask;
 
-    uint16_t subtype = static_cast<uint16_t>(subFormat[0]) |
-                       (static_cast<uint16_t>(subFormat[1]) << 8);
-    info.audioFormat = (subtype == WAV_FORMAT_IEEE_FLOAT)
-                           ? WAV_FORMAT_IEEE_FLOAT
-                           : WAV_FORMAT_PCM;
+    if (std::memcmp(subFormat, WAV_SUBFORMAT_PCM, sizeof(subFormat)) == 0) {
+      info.audioFormat = WAV_FORMAT_PCM;
+    } else if (std::memcmp(subFormat, WAV_SUBFORMAT_IEEE_FLOAT,
+                           sizeof(subFormat)) == 0) {
+      info.audioFormat = WAV_FORMAT_IEEE_FLOAT;
+    } else {
+      Trace::Error("WavHeaderWriter: Unsupported extensible subformat GUID");
+      return etl::unexpected(UNSUPPORTED_AUDIO_FORMAT);
+    }
   }
 
   const bool isPcm = info.audioFormat == WAV_FORMAT_PCM;

@@ -15,10 +15,12 @@
 #include "stm32h7xx_hal.h"
 #include "tim.h"
 #include <math.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 
 #include "FreeRTOS.h"
+#include "semphr.h"
 #include "task.h"
 
 #include "usart.h"
@@ -44,6 +46,11 @@ static volatile char overrideSpkr = 0;
 // Early boot fatal paths can power down before the codec has been brought out
 // of reset, so callers need a cheap init-state check before doing codec I2C.
 static bool codecInitialized = false;
+// A request is safe from the UI/startup task and never performs I2C.
+static atomic_bool analogOutputEnabled = true;
+static bool usbOutputApplied = false;
+static StaticSemaphore_t codecMutexStorage;
+static SemaphoreHandle_t codecMutex;
 
 HAL_StatusTypeDef tlv320write(uint16_t reg, uint8_t value) {
   // Write to the register
@@ -128,7 +135,7 @@ void tlv320_reset() {
   HAL_Delay(1);
 }
 
-void tlv320_init() {
+static void tlv320_init_impl() {
   // hardware reset device on start
   tlv320_reset();
   codecInitialized = true;
@@ -234,6 +241,11 @@ DOSR 128
 
   // Set MicPGA startup delay to 3.1ms
   tlv320write(0x47, 0x32);
+
+  // Begin with a known muted state. The output owner unmutes Analog once,
+  // whereas USB keeps the codec and amplifier muted throughout startup.
+  tlv320_mute();
+  usbOutputApplied = true;
 }
 
 void tlv320_enable_hp(void) {
@@ -300,7 +312,21 @@ void tlv320_enable_spkr(void) {
   tlv320write(0x3f, 0x4e);
 }
 
-void tlv320_select_output(void) {
+static void tlv320_select_output_impl(void) {
+
+  if (!atomic_load_explicit(&analogOutputEnabled, memory_order_acquire)) {
+    if (!usbOutputApplied) {
+      tlv320_mute();
+      usbOutputApplied = true;
+    }
+    HAL_GPIO_WritePin(AMP_EN_GPIO_Port, AMP_EN_Pin, GPIO_PIN_RESET);
+    return;
+  }
+  if (usbOutputApplied) {
+    tlv320_unmute();
+    usbOutputApplied = false;
+    output = INIT;
+  }
 
   uint8_t value;
   if (tlv320read(0x00, 0x43, &value) != HAL_OK) {
@@ -325,11 +351,23 @@ void tlv320_select_output(void) {
   // Disable the speaker for physical headphones or microphone recording to
   // prevent feedback. Playback, silence, render, and line-in state must not
   // cycle the speaker amplifier.
-  HAL_GPIO_WritePin(AMP_EN_GPIO_Port, AMP_EN_Pin,
-                    speakerMustBeDisabled ? GPIO_PIN_RESET : GPIO_PIN_SET);
+  // A USB request can arrive during the de-pop delay. Check it again before
+  // enabling the amplifier, even though this operation owns the codec lock.
+  if (!atomic_load_explicit(&analogOutputEnabled, memory_order_acquire)) {
+    tlv320_mute();
+    usbOutputApplied = true;
+    HAL_GPIO_WritePin(AMP_EN_GPIO_Port, AMP_EN_Pin, GPIO_PIN_RESET);
+  } else {
+    HAL_GPIO_WritePin(AMP_EN_GPIO_Port, AMP_EN_Pin,
+                      speakerMustBeDisabled ? GPIO_PIN_RESET : GPIO_PIN_SET);
+  }
 }
 
-void tlv320_set_volume(uint8_t vol) {
+void tlv320_set_analog_output_enabled(bool enabled) {
+  atomic_store_explicit(&analogOutputEnabled, enabled, memory_order_release);
+}
+
+static void tlv320_set_volume_impl(uint8_t vol) {
   // we use volume if 0..100 to map to register 65 and 66 directly. In order to
   // have every step be equial (0.5dB), we'll use the range of -0.5dB (255) to
   // -50.5dB (155)
@@ -356,7 +394,7 @@ uint8_t tlv320_get_volume(void) {
 
 bool tlv320_is_initialized(void) { return codecInitialized; }
 
-void tlv320_mute(void) {
+static void tlv320_mute_impl(void) {
   // Select Page 0
   tlv320write(0x00, 0x00);
   uint8_t value;
@@ -367,7 +405,7 @@ void tlv320_mute(void) {
   tlv320write(0x40, value);
 }
 
-void tlv320_unmute(void) {
+static void tlv320_unmute_impl(void) {
   // Select Page 0
   tlv320write(0x00, 0x00);
   uint8_t value;
@@ -379,7 +417,7 @@ void tlv320_unmute(void) {
   tlv320write(0x40, value);
 }
 
-void tlv320_enable_linein(void) {
+static void tlv320_enable_linein_impl(void) {
   if (input == NONE) {
     input = LINEIN;
   } else {
@@ -412,11 +450,9 @@ void tlv320_enable_linein(void) {
   // Unmute Left and Right ADC Digital Volume Control.
   tlv320write(0x52, 0x00);
 
-  // Recheck output so line-in defaults to speaker when no headphones are
-  // detected.
-  tlv320_select_output();
+  // The output task polls input/headphone state and owns physical routing.
 }
-void tlv320_enable_mic(void) {
+static void tlv320_enable_mic_impl(void) {
   if (input == NONE) {
     input = MIC;
   } else {
@@ -453,11 +489,10 @@ void tlv320_enable_mic(void) {
   // Unmute Left ADC Digital Volume Control.
   tlv320write(0x52, 0x08);
 
-  // Recheck output in case Speaker needs to be muted
-  tlv320_select_output();
+  // The output task observes MIC and disables the speaker amplifier.
 }
 
-void tlv320_set_linein_analog_gain_db(int32_t gainDb) {
+static void tlv320_set_linein_analog_gain_db_impl(int32_t gainDb) {
   if (input != LINEIN) {
     return;
   }
@@ -465,7 +500,7 @@ void tlv320_set_linein_analog_gain_db(int32_t gainDb) {
   tlv320_update_gain_register(0x3c, LINEINBASEHALFDB, gainDb);
 }
 
-void tlv320_set_mic_digital_gain_db(int32_t gainDb) {
+static void tlv320_set_mic_digital_gain_db_impl(int32_t gainDb) {
   if (input != MIC) {
     return;
   }
@@ -475,7 +510,7 @@ void tlv320_set_mic_digital_gain_db(int32_t gainDb) {
   tlv320_set_adc_digital_gain_db(RIGHT_ADC_DIGITAL_GAIN_REGISTER, 0);
 }
 
-void tlv320_disable_linein(void) {
+static void tlv320_disable_linein_impl(void) {
   if (input == LINEIN) {
     input = NONE;
   } else {
@@ -503,7 +538,7 @@ void tlv320_disable_linein(void) {
   // Unroute IN1L to LEFT_P
   tlv320write(0x34, 0x00);
 }
-void tlv320_disable_mic(void) {
+static void tlv320_disable_mic_impl(void) {
   if (input == MIC) {
     input = NONE;
   } else {
@@ -525,11 +560,10 @@ void tlv320_disable_mic(void) {
   // Route IN2L to LEFT_P
   tlv320write(0x34, 0x00);
 
-  // Recheck output in case Speaker needs to be unmutted
-  tlv320_select_output();
+  // The output task restores the selected analog route.
 }
 
-void tlv320_sleep(void) {
+static void tlv320_sleep_impl(void) {
   // -- TABLE 1, STEP 1a: Configure amplifier gains to -6dB
   // w 30 00 01 # Switch to Page 1
   tlv320write(0x00, 0x01);
@@ -635,4 +669,115 @@ void tlv320_sleep(void) {
   //  w 30 01 00 # Enable weak AVDD to DVDD connection w 30 02 08
   tlv320write(0x01, 0x00);
   // # Power down ALDO (skip if using external AVDD)
+}
+
+void tlv320_init() {
+  if (codecMutex == NULL) {
+    codecMutex = xSemaphoreCreateRecursiveMutexStatic(&codecMutexStorage);
+  }
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_init_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_select_output(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_select_output_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_set_volume(uint8_t vol) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_set_volume_impl(vol);
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_mute(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_mute_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_unmute(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_unmute_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_enable_linein(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_enable_linein_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_enable_mic(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_enable_mic_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_disable_linein(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_disable_linein_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_disable_mic(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_disable_mic_impl();
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_set_linein_analog_gain_db(int32_t gainDb) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_set_linein_analog_gain_db_impl(gainDb);
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_set_mic_digital_gain_db(int32_t gainDb) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_set_mic_digital_gain_db_impl(gainDb);
+  xSemaphoreGiveRecursive(codecMutex);
+}
+
+void tlv320_sleep(void) {
+  if (codecMutex == NULL ||
+      xSemaphoreTakeRecursive(codecMutex, portMAX_DELAY) != pdTRUE) {
+    return;
+  }
+  tlv320_sleep_impl();
+  xSemaphoreGiveRecursive(codecMutex);
 }

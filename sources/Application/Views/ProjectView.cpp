@@ -45,7 +45,8 @@ ProjectMidiValueField::ProjectMidiValueField(const GUIPoint &position,
 
 void ProjectMidiValueField::Draw(GUIWindow &w, int offset) {
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   char value[3];
@@ -300,6 +301,7 @@ ProjectView::ProjectView(GUIWindow &w, ViewData *data) : FieldView(w, data) {
   position._x = xalign;
   position._y += 2;
   staticField_.emplace_back(position, "MIDI DEFAULT PROGRAM", CD_HILITE2);
+  staticField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 17);
   fieldList_.insert(fieldList_.end(), &(*staticField_.rbegin()));
 
   position._y += 1;
@@ -313,6 +315,8 @@ ProjectView::ProjectView(GUIWindow &w, ViewData *data) : FieldView(w, data) {
         position, project_->song_.midiDefaultPrograms_[midiChannel],
         MIDI_INPUT_MIN_PROGRAM, MIDI_INPUT_MAX_PROGRAM,
         MIDI_INPUT_DEFAULT_PROGRAM);
+    midiDefaultProgramField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4,
+                                                  17);
     fieldList_.insert(fieldList_.end(), &(*midiDefaultProgramField_.rbegin()));
     position._x += 3;
   }
@@ -413,6 +417,7 @@ void ProjectView::DrawView() {
   Clear();
 
   GUITextProperties props;
+  props.region_ = TEXT_REGION_BODY;
 
   // Draw title
   Variable *v = viewData_->project_->FindVariable(FourCC::VarProjectName);
@@ -473,6 +478,7 @@ void ProjectView::DrawRenderSelectionSummary(const GUIRect &selectionRect) {
 
   SetColor(CD_NORMAL);
   GUITextProperties props;
+  props.region_ = TEXT_REGION_BODY;
 
   GUIPoint renderSelectionInfoPos = renderLabelPos_;
   renderSelectionInfoPos._x += 8;

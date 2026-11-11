@@ -214,7 +214,8 @@ void UIFM6ParamField::write(uint8_t value) {
 
 void UIFM6ParamField::Draw(GUIWindow &w, int offset) {
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   const uint8_t value = std::clamp(read(), def_.min, def_.max);
@@ -245,7 +246,7 @@ void UIFM6ParamField::Draw(GUIWindow &w, int offset) {
     props.invert_ = true;
     w.DrawString(buffer, position, props);
   } else {
-    DrawLabeledField(w, position, buffer);
+    DrawLabeledField(w, position, buffer, props);
   }
 };
 

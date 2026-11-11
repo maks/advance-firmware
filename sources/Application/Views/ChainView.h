@@ -21,6 +21,9 @@ struct SelectionResampleRequest;
 
 class ChainView : public ScreenView {
 public:
+  // The normal body starts below the two small-font information rows.
+  GUIPoint GetAnchor() override { return GUIPoint(5, 0); }
+
   ChainView(GUIWindow &w, ViewData *data);
   void Reset();
   virtual void ProcessButtonMask(unsigned short mask, bool pressed);

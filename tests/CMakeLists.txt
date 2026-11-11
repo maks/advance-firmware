@@ -25,10 +25,17 @@ set(BRAIDS_SOURCES
 )
 
 add_executable(picoTracker_tests
+  text_highlight_tests.cpp
+  remote_ui_protocol_tests.cpp
+  ../sources/System/RemoteUI/RemoteUIProtocol.cpp
   adv_usb_host_power_policy_tests.cpp
   audio_voice_tests.cpp
   audio_output_silence_tests.cpp
+  usb_audio_handoff_tests.cpp
+  ../sources/Adapters/adv/usb/usb_audio_handoff.cpp
   ../sources/Services/Audio/AudioDriver.cpp
+  line_in_mixer_tests.cpp
+  ../sources/Application/Mixer/LineInMixer.cpp
   delay_output_effect_tests.cpp
   dattorro_reverb_tests.cpp
   midi_in_device_tests.cpp
@@ -58,6 +65,7 @@ add_executable(picoTracker_tests
   charger_watchdog_tests.cpp
   i2c_recovery_tests.cpp
   command_list_tests.cpp
+  command_help_state_tests.cpp
   instrument_pool_tests.cpp
   output_effect_slot_tests.cpp
   play_button_behavior_tests.cpp
@@ -75,6 +83,23 @@ add_executable(picoTracker_tests
   import_while_playing_tests.cpp
   test_main.cpp
   wavheader_tests.cpp
+  display_renderer_tests.cpp
+  wasm_input_tests.cpp
+  wasm_audio_tests.cpp
+  wasm_storage_tests.cpp
+  ../sources/System/Display/DisplayRenderer.c
+  ../sources/System/Display/font.c
+  ../sources/Adapters/wasm/input/InputMap.cpp
+  ../sources/Adapters/wasm/input/InputRepeatTracker.cpp
+  ../sources/Adapters/wasm/audio/OutputResampler.cpp
+  ../sources/Adapters/wasm/audio/AudioWorklet.cpp
+  ../sources/Adapters/wasm/audio/WasmAudioDriver.cpp
+  ../sources/Adapters/wasm/filesystem/WasmFileSystem.cpp
+  ../sources/Adapters/wasm/filesystem/WasmFile.cpp
+  ../sources/Adapters/wasm/filesystem/WasmStorageBridge.cpp
+  ../sources/Adapters/wasm/tracing/InputFrameLatencyTracker.cpp
+  ../sources/Adapters/wasm/tracing/WasmProfiler.cpp
+  ../sources/Services/Audio/AudioDriver.cpp
   stubs/System/FileSystem/FakeFileSystem.cpp
   ../sources/Application/Instruments/CommandList.cpp
   ../sources/Application/Instruments/Filters.cpp
@@ -332,3 +357,17 @@ target_compile_definitions(picoTracker_instr_import_e2e_tests PRIVATE
   PACKAGE="picoTrackerHostTests"
   VERSION="test"
 )
+
+add_library(header_display_backend OBJECT ../sources/Adapters/adv/display/text_fonts.c ../sources/Adapters/adv/display/display.c ../sources/Adapters/adv/display/pixel_targets.c)
+target_include_directories(header_display_backend PRIVATE display_stubs ../sources)
+add_executable(picoTracker_header_font_tests
+  test_main.cpp
+  header_font_tests.cpp
+  ../sources/Application/Views/BaseClasses/UIField.cpp
+  $<TARGET_OBJECTS:header_display_backend>
+)
+target_include_directories(picoTracker_header_font_tests PRIVATE
+  display_stubs ../sources ../sources/Externals
+)
+target_compile_definitions(picoTracker_header_font_tests PRIVATE HOST_TEST)
+target_include_directories(picoTracker_tests BEFORE PRIVATE display_stubs)

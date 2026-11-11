@@ -29,6 +29,9 @@ constexpr uint8_t kFusb303TypeReg = 0x13u;
 constexpr uint8_t kFusb303InterruptReg = 0x14u;
 constexpr uint8_t kFusb303Interrupt1Reg = 0x15u;
 
+constexpr uint8_t kFusb303PortRoleTryMask = 0x30u;
+constexpr uint8_t kFusb303PortRoleTrySnkValue = 0x10u;
+
 constexpr uint8_t kFusb303ControlRuntimeValue = 0x42u;
 constexpr uint8_t kFusb303Control1RuntimeValue = 0xAEu;
 constexpr uint8_t kFusb303UnmaskAllInterruptsValue = 0x00u;
@@ -277,6 +280,19 @@ bool advUsbRoleManagerInit(void) {
     return false;
   }
   bootDelayMs(10);
+
+  uint8_t portRole = 0;
+  if (!readRegister(kFusb303PortRoleReg, portRole)) {
+    Trace::Error("USBROLE: failed to read FUSB303 port role for preference");
+    return false;
+  }
+  portRole = static_cast<uint8_t>(
+      (portRole & static_cast<uint8_t>(~kFusb303PortRoleTryMask)) |
+      kFusb303PortRoleTrySnkValue);
+  if (!writeRegister(kFusb303PortRoleReg, portRole)) {
+    Trace::Error("USBROLE: failed to prefer FUSB303 sink role");
+    return false;
+  }
 
   if (!writeRegister(kFusb303ControlReg, kFusb303ControlRuntimeValue)) {
     Trace::Error("USBROLE: failed to program FUSB303 control register");

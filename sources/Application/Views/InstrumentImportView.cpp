@@ -268,12 +268,11 @@ void InstrumentImportView::DrawView() {
                                                      : "Import Instrument"));
 
   GUITextProperties props;
-  GUIPoint pos = GetTitlePosition();
 
   SetColor(CD_NORMAL);
 
   int x = 1;
-  int y = pos._y + 2;
+  int y = 1;
 
   for (size_t i = topIndex_;
        i < topIndex_ + LIST_PAGE_SIZE && (i < fileEntries_.size()); i++) {
@@ -289,15 +288,17 @@ void InstrumentImportView::DrawView() {
     if (entry.type == PFT_DIR) {
       if (entry.name == BrowserPathUtils::kParentDirectoryName) {
         if (mode_ == Mode::Dx7Patch && currentDir_ == "/") {
-          DrawString(x, y, "[System]", props);
+          DrawRegionString(TEXT_REGION_BODY, x, y, "[System]", props);
         } else {
-          DrawString(x, y, BrowserPathUtils::kParentDirectoryDisplayName,
-                     props);
+          DrawRegionString(TEXT_REGION_BODY, x, y,
+                           BrowserPathUtils::kParentDirectoryDisplayName,
+                           props);
         }
       } else {
-        DrawString(x, y, "[", props);
-        DrawString(x + 1, y, entry.name.c_str(), props);
-        DrawString(x + entry.name.size() + 1, y, "]", props);
+        DrawRegionString(TEXT_REGION_BODY, x, y, "[", props);
+        DrawRegionString(TEXT_REGION_BODY, x + 1, y, entry.name.c_str(), props);
+        DrawRegionString(TEXT_REGION_BODY, x + entry.name.size() + 1, y, "]",
+                         props);
       }
     } else if (browsingSysex_) {
       // Hex index drawn in the row-label accent colour, then the patch name,
@@ -305,12 +306,13 @@ void InstrumentImportView::DrawView() {
       // bank names line up regardless of patch-name length. Index 0 is the
       // "SDCard" dir entry, so preset program == list index - 1.
       SetColor(CD_ACCENT);
-      DrawString(x, y, entry.name.c_str(), props);
+      DrawRegionString(TEXT_REGION_BODY, x, y, entry.name.c_str(), props);
       const size_t prefixLen = 3; // "0x "
       SetColor(i == currentIndex_ ? CD_HILITE2 : CD_NORMAL);
-      DrawString(x + prefixLen, y, entry.name.c_str() + prefixLen, props);
+      DrawRegionString(TEXT_REGION_BODY, x + prefixLen, y,
+                       entry.name.c_str() + prefixLen, props);
     } else {
-      DrawString(x, y, entry.name.c_str(), props);
+      DrawRegionString(TEXT_REGION_BODY, x, y, entry.name.c_str(), props);
     }
     y++;
   }

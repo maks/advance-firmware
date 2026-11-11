@@ -11,20 +11,24 @@
  */
 
 #include "advAudioDriver.h"
+#include "Adapters/adv/usb/usb_audio_handoff.h"
 #include "Application/Mixer/MixerService.h"
 #include "Application/Model/Config.h"
 #include "Services/Midi/MidiService.h"
 #include "System/Profiler/DWTProfiler.h"
 #include "System/Profiler/Profiler.h"
 #include "System/System/System.h"
+#include "advLineInCapture.h"
 #include "config/MemorySections.h"
 #include "main.h" // has to come before FreeRTOS.h due to linkage of SystemCoreClock
+#include "record.h"
 #include "sai.h"
 // Don't delete this space
 #include "FreeRTOS.h"
 #include "semphr.h"
 #include "task.h"
 #include "tlv320aic3204.h"
+#include <atomic>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +40,10 @@ extern DMA_HandleTypeDef hdma_sai1_a;
 const int16_t advAudioDriver::miniBlank_[MINI_BLANK_SIZE] = {0};
 
 advAudioDriver *advAudioDriver::instance_ = NULL;
+namespace {
+std::atomic<uint8_t> requestedVolume{40};
+} // namespace
+
 SemaphoreHandle_t core1_audio;
 static StaticSemaphore_t xSemaphoreBuffer;
 
@@ -47,6 +55,31 @@ void HAL_SAI_TxCpltCallback(SAI_HandleTypeDef *hsai) {
   if (hsai->Instance == hsai_BlockA1.Instance) {
     advAudioDriver::IRQHandler();
   }
+}
+
+// SAI block B receive completion. Route it to whoever currently owns the
+// peripheral: the live line input mix or the record path.
+void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
+  if (hsai->Instance != hsai_BlockB1.Instance) {
+    return;
+  }
+  // The line input mix reads the DMA counter directly, so it has no use for
+  // the half transfer signal.
+  if (AdvLineInCapture::ownsTransfer()) {
+    return;
+  }
+  RecordRxHalfCplt();
+}
+
+void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
+  if (hsai->Instance != hsai_BlockB1.Instance) {
+    return;
+  }
+  if (AdvLineInCapture::ownsTransfer()) {
+    AdvLineInCapture::RxComplete();
+    return;
+  }
+  RecordRxCplt();
 }
 
 void advAudioDriver::IRQHandler() { instance_->OnChunkDone(); }
@@ -74,11 +107,17 @@ void AudioThread(void *) {
 }
 
 void AudioOutput(void *) {
+  uint8_t appliedVolume = UINT8_MAX;
   while (true) {
-    // Profiling logs are intentionally emitted from this low-priority task so
-    // blocking UART writes cannot stall buffer preparation.
+    // This task owns physical routing and playback volume. Route requests
+    // and StartDriver never perform codec I/O or wait for de-pop delays.
     tlv320_select_output();
-    vTaskDelay(pdMS_TO_TICKS(500));
+    const uint8_t volume = requestedVolume.load(std::memory_order_acquire);
+    if (volume != appliedVolume) {
+      tlv320_set_volume(volume);
+      appliedVolume = volume;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 
@@ -96,7 +135,6 @@ advAudioDriver::~advAudioDriver() { adv_exit = 1; }
 
 bool advAudioDriver::InitDriver() {
   instance_ = this;
-
   Config *config = Config::GetInstance();
   uint8_t initialVolume = 40;
   if (config) {
@@ -108,6 +146,19 @@ bool advAudioDriver::InitDriver() {
 
   // Configure codec
   tlv320_init();
+  Variable *audioOutput =
+      config ? config->FindVariable(FourCC::VarAudioOutput) : nullptr;
+  const int outputMode = audioOutput != nullptr
+                             ? audioOutput->GetInt()
+                             : static_cast<int>(AudioOutputMode::Analog);
+  const bool usbSelected =
+      outputMode != static_cast<int>(AudioOutputMode::Analog);
+  const bool analogEnabled =
+      outputMode != static_cast<int>(AudioOutputMode::Usb);
+  usbMasterAudioSetOutputSelected(usbSelected);
+  tlv320_set_analog_output_enabled(analogEnabled);
+  tlv320_select_output();
+  requestedVolume.store(initialVolume, std::memory_order_release);
   tlv320_set_volume(initialVolume);
   // Takes some time between configuring HP detect and actually detecting
   vTaskDelay(pdMS_TO_TICKS(250));
@@ -133,10 +184,15 @@ bool advAudioDriver::InitDriver() {
 
 void advAudioDriver::SetVolume(int v) {
   Trace::Debug("Setting volume to %d", v);
-  tlv320_set_volume(v);
+  requestedVolume.store(static_cast<uint8_t>(v < 0     ? 0
+                                             : v > 100 ? 100
+                                                       : v),
+                        std::memory_order_release);
 };
 
-int advAudioDriver::GetVolume() { return tlv320_get_volume(); };
+int advAudioDriver::GetVolume() {
+  return requestedVolume.load(std::memory_order_acquire);
+};
 
 void advAudioDriver::CloseDriver(){
     // Not really used, maybe for sleep?
@@ -144,6 +200,7 @@ void advAudioDriver::CloseDriver(){
 
 bool advAudioDriver::StartDriver() {
   isPlaying_ = true;
+  usbMasterAudioSetPlaybackActive(1);
 
   // Start filling up as many buffers as we have
   for (int i = 0; i < SOUND_BUFFER_COUNT - 1; i++) {
@@ -157,16 +214,28 @@ bool advAudioDriver::StartDriver() {
 
   startTime_ = HAL_GetTick();
 
-  // Codec output stays enabled across playback and render transitions.
-  // This does not change the speaker amplifier state.
-  tlv320_unmute();
+  // SAI/DMA remains the playback clock in either route. The output task
+  // applies the requested physical route; startup performs no codec I/O.
   return true;
 };
 
 void advAudioDriver::StopDriver() {
   adv_sound_pause(1);
   isPlaying_ = false;
+  usbMasterAudioSetPlaybackActive(0);
 };
+
+PICOTRACKER_FAST_CODE("advance_audio_publish_usb_master")
+void advAudioDriver::AddBuffer(short *buffer, int samplecount,
+                               bool silenceOutput) {
+  MixerService *mixer = MixerService::GetInstance();
+  if (isPlaying_ && mixer != nullptr && mixer->GetMode() == MSM_AUDIO &&
+      samplecount > 0 && samplecount <= MAX_SAMPLE_COUNT) {
+    usbMasterAudioPublish(reinterpret_cast<const int16_t *>(buffer),
+                          static_cast<uint16_t>(samplecount), silenceOutput);
+  }
+  AudioDriver::AddBuffer(buffer, samplecount, silenceOutput);
+}
 
 void advAudioDriver::OnChunkDone() {
   if (isPlaying_) {

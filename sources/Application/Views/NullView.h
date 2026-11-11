@@ -15,6 +15,15 @@
 
 class NullView : public View {
 public:
+  TextLayout GetTextLayout() const override { return Layout(); }
+  static TextLayout Layout() {
+    static constexpr TextRegion regions[] = {
+        {8, 4, 704, 24, TEXT_FONT_SMALL},
+        {8, 30, 704, 690, TEXT_FONT_NORMAL},
+    };
+    return {regions, sizeof(regions) / sizeof(regions[0])};
+  }
+
   NullView(GUIWindow &w, ViewData *viewData);
   ~NullView();
   virtual void ProcessButtonMask(unsigned short mask, bool pressed);

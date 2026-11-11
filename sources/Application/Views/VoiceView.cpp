@@ -98,13 +98,13 @@ void drawBlock(View &view, int32_t x, int32_t y, int32_t size,
   const int32_t halfSize = size / 2;
   GUIRect block(x - halfSize, y - halfSize, x - halfSize + size,
                 y - halfSize + size);
-  view.DrawRect(block, color);
+  view.DrawGraphicsRect(0, block, color);
 }
 
 void drawFilledRect(View &view, int32_t left, int32_t top, int32_t width,
                     int32_t height, ColorDefinition color) {
   GUIRect rect(left, top, left + width, top + height);
-  view.DrawRect(rect, color);
+  view.DrawGraphicsRect(0, rect, color);
 }
 
 void drawRectOutline(View &view, int32_t left, int32_t top, int32_t width,
@@ -233,7 +233,7 @@ void drawChunkyLine(View &view, int32_t x1, int32_t y1, int32_t x2, int32_t y2,
 void drawEnvelopeBackground(View &view, int32_t x, int32_t y, int32_t width,
                             int32_t height) {
   GUIRect background(x, y, x + width, y + height);
-  view.DrawRect(background, CD_BACKGROUND);
+  view.DrawGraphicsRect(0, background, CD_BACKGROUND);
 }
 
 void drawEnvelopeFrame(View &view, int32_t x, int32_t y, int32_t width,
@@ -242,10 +242,10 @@ void drawEnvelopeFrame(View &view, int32_t x, int32_t y, int32_t width,
   GUIRect left(x, y, x + EnvelopeFrameThickness, y + height);
   GUIRect right(x + width - EnvelopeFrameThickness, y, x + width, y + height);
   GUIRect top(x, y, x + width, y + EnvelopeFrameThickness);
-  view.DrawRect(top, color);
-  view.DrawRect(bottom, color);
-  view.DrawRect(left, color);
-  view.DrawRect(right, color);
+  view.DrawGraphicsRect(0, top, color);
+  view.DrawGraphicsRect(0, bottom, color);
+  view.DrawGraphicsRect(0, left, color);
+  view.DrawGraphicsRect(0, right, color);
 }
 
 void drawEnvelopeGuideLine(View &view, int32_t x, int32_t top, int32_t bottom,
@@ -255,7 +255,7 @@ void drawEnvelopeGuideLine(View &view, int32_t x, int32_t top, int32_t bottom,
     const int32_t segmentBottom =
         std::min(clampedBottom + 1, y + EnvelopeGuideLineSegmentHeight);
     GUIRect segment(x, y, x + EnvelopeGuideLineThickness, segmentBottom);
-    view.DrawRect(segment, color);
+    view.DrawGraphicsRect(0, segment, color);
   }
 }
 
@@ -814,6 +814,13 @@ void drawLFOShape(View &view, int32_t x, int32_t y, int32_t width,
 }
 } // namespace
 
+GraphicsLayout VoiceView::GetGraphicsLayout() {
+  static constexpr GraphicsRegion regions[] = {{EnvelopePanelX, EnvelopeGraphY,
+                                                EnvelopePanelWidth,
+                                                EnvelopeGraphHeight}};
+  return {regions, 1};
+}
+
 VoiceView::VoiceView(GUIWindow &w, ViewData *data)
     : FieldView(w, data), lastFocusIndex_(0), graphKind_(GraphKind::Voice),
       graphSection_(GraphSection::None), previewMode_(PreviewMode::None),
@@ -982,6 +989,10 @@ void VoiceView::refreshVoiceFields() {
     }
 
     lfoFields_.emplace_back(GUIPoint(x, y), *voiceParams, lfoIndex, kind);
+    // The last three LFO rows sit beside the map, in the footer grid.
+    if (kind == LFOFieldKind::RateMode || kind == LFOFieldKind::Rate ||
+        kind == LFOFieldKind::Depth)
+      lfoFields_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 19);
     fieldList_.insert(fieldList_.end(), &lfoFields_.back());
   };
 
@@ -1490,12 +1501,12 @@ void VoiceView::drawSectionHeaders() {
   const int32_t lfoBaseY = bottomBaseY + 1;
 
   SetColor(CD_HILITE2);
-  DrawString(VoiceColumnX, topBaseY, "Voice", props);
-  DrawString(FilterColumnX, topBaseY, "Filter", props);
-  DrawString(AmpColumnX, topBaseY, "Amp", props);
-  DrawString(VoiceColumnX, fxBaseY, "Fx", props);
-  DrawString(FilterColumnX, lfoBaseY, "LFO1", props);
-  DrawString(AmpColumnX, lfoBaseY, "LFO2", props);
+  DrawRegionString(TEXT_REGION_BODY, VoiceColumnX, topBaseY, "Voice", props);
+  DrawRegionString(TEXT_REGION_BODY, FilterColumnX, topBaseY, "Filter", props);
+  DrawRegionString(TEXT_REGION_BODY, AmpColumnX, topBaseY, "Amp", props);
+  DrawRegionString(TEXT_REGION_BODY, VoiceColumnX, fxBaseY, "Fx", props);
+  DrawRegionString(TEXT_REGION_BODY, FilterColumnX, lfoBaseY, "LFO1", props);
+  DrawRegionString(TEXT_REGION_BODY, AmpColumnX, lfoBaseY, "LFO2", props);
 }
 
 void VoiceView::drawLFOTargetMarkers() {
@@ -1532,7 +1543,8 @@ void VoiceView::drawLFOTargetMarkers() {
     }
 
     char marker[2] = {static_cast<char>('1' + i), '\0'};
-    DrawString(position._x - 1, position._y, marker, props);
+    DrawRegionString(TEXT_REGION_BODY, position._x - 1, position._y, marker,
+                     props);
   }
 }
 
@@ -1543,10 +1555,9 @@ void VoiceView::drawEnvelopeGraphs() {
   constexpr ColorDefinition frameColor = CD_NORMAL;
   constexpr ColorDefinition baseGraphColor = CD_EMPHASIS;
 
-  drawEnvelopeBackground(*this, EnvelopePanelX, EnvelopeGraphY,
-                         EnvelopePanelWidth, EnvelopeGraphHeight);
-  drawEnvelopeFrame(*this, EnvelopePanelX, EnvelopeGraphY, EnvelopePanelWidth,
-                    EnvelopeGraphHeight, frameColor);
+  drawEnvelopeBackground(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight);
+  drawEnvelopeFrame(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight,
+                    frameColor);
 
   if (!instrument || !bank) {
     return;
@@ -1622,28 +1633,25 @@ void VoiceView::drawEnvelopeGraphs() {
                                        : nullptr;
     if (voiceParams) {
       LFOSettings *lfoSettings = voiceParams->GetLFOSettings();
-      drawLFOShape(*this, EnvelopePanelX, EnvelopeGraphY, EnvelopePanelWidth,
-                   EnvelopeGraphHeight,
+      drawLFOShape(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight,
                    lfoSettings->Get(graphKind_ == GraphKind::LFO1 ? 0 : 1),
                    baseGraphColor);
     }
   } else if (graphKind_ == GraphKind::Voice) {
     if (graphSection_ == GraphSection::TriggerLength) {
-      drawTriggerLengthShape(*this, EnvelopePanelX, EnvelopeGraphY,
-                             EnvelopePanelWidth, EnvelopeGraphHeight,
-                             triggerLength, baseGraphColor);
+      drawTriggerLengthShape(*this, 0, 0, EnvelopePanelWidth,
+                             EnvelopeGraphHeight, triggerLength,
+                             baseGraphColor);
     } else if (graphSection_ == GraphSection::Pan) {
-      drawPanShape(*this, EnvelopePanelX, EnvelopeGraphY, EnvelopePanelWidth,
-                   EnvelopeGraphHeight, pan, baseGraphColor);
+      drawPanShape(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight, pan,
+                   baseGraphColor);
     } else {
-      drawBaseWidthShape(*this, EnvelopePanelX, EnvelopeGraphY,
-                         EnvelopePanelWidth, EnvelopeGraphHeight, base,
-                         widthValue, baseGraphColor);
+      drawBaseWidthShape(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight,
+                         base, widthValue, baseGraphColor);
     }
   } else if (graphKind_ == GraphKind::Fx) {
-    drawInsertFlowShape(*this, EnvelopePanelX, EnvelopeGraphY,
-                        EnvelopePanelWidth, EnvelopeGraphHeight, insertSlots,
-                        graphSection_, baseGraphColor);
+    drawInsertFlowShape(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight,
+                        insertSlots, graphSection_, baseGraphColor);
   } else if (graphKind_ == GraphKind::Filter) {
     const bool showFilterResponse =
         graphSection_ == GraphSection::FilterCutoff ||
@@ -1652,20 +1660,18 @@ void VoiceView::drawEnvelopeGraphs() {
 
     if (showFilterResponse) {
       drawFilterResponseShape(
-          *this, EnvelopePanelX, EnvelopeGraphY, EnvelopePanelWidth,
-          EnvelopeGraphHeight, filterCutoff,
+          *this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight, filterCutoff,
           voiceIntValue(bank, instrument, instrumentID,
                         FourCC::VoiceFilterResonance, 0, 0, 0xFF),
           voiceIntValue(bank, instrument, instrumentID, FourCC::VoiceFilterType,
                         0, 0, 0xFF),
           baseGraphColor);
     } else {
-      drawEnvelopeShape(*this, EnvelopePanelX, EnvelopeGraphY,
-                        EnvelopePanelWidth, EnvelopeGraphHeight, filter,
-                        filterEnvDepth, baseGraphColor);
+      drawEnvelopeShape(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight,
+                        filter, filterEnvDepth, baseGraphColor);
     }
   } else if (graphKind_ == GraphKind::Amp) {
-    drawEnvelopeShape(*this, EnvelopePanelX, EnvelopeGraphY, EnvelopePanelWidth,
-                      EnvelopeGraphHeight, amp, ampLevel, baseGraphColor);
+    drawEnvelopeShape(*this, 0, 0, EnvelopePanelWidth, EnvelopeGraphHeight, amp,
+                      ampLevel, baseGraphColor);
   }
 }

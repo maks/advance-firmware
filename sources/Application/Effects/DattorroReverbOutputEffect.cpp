@@ -14,7 +14,7 @@
 
 namespace {
 
-#if defined(ADV) && !defined(HOST_TEST)
+#if defined(ADV) && !defined(HOST_TEST) && !defined(WASM)
 // The fixed reverb owns these exact DSP buffers directly; there is no shared
 // output-effect arena or runtime reservation step.
 __attribute__((aligned(32))) __attribute__((section(".RAM_D2"))) uint8_t

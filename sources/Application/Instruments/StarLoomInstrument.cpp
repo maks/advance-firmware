@@ -59,7 +59,7 @@ struct StarLoomSharedRuntime {
 
 StarLoomChannelRuntime runtime_[SONG_CHANNEL_COUNT];
 StarLoomSharedRuntime sharedRuntime_;
-#if defined(ADV) && !defined(HOST_TEST)
+#if defined(ADV) && !defined(HOST_TEST) && !defined(WASM)
 __attribute__((section(".RAM_EXT")))
 #endif
 alignas(32) braids::DigitalOscillatorDelayLines

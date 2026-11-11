@@ -110,8 +110,6 @@ public:
   }
   void AutoSliceEvenly(View &view);
   uint8_t PreviewNote();
-  void MarkModalRecovery(uint8_t count);
-  void ClearWaveformRegion(View &view);
   void SetFocusSampleHint(bool visible, uint32_t sample);
   void SetPreviewFocusHint(bool visible);
   void SetPreviewRangeHint(bool visible, uint32_t start, uint32_t loopStart,
@@ -174,7 +172,6 @@ private:
   unsigned short previewChannel_;
   uint32_t previewPlayheadSample_;
   bool previewCursorVisible_;
-  uint8_t modalClearCount_;
   bool focusSampleHintVisible_;
   uint32_t focusSampleHint_;
   bool previewFocusHintVisible_;

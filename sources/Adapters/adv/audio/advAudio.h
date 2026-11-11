@@ -10,6 +10,8 @@
 
 #include "Services/Audio/Audio.h"
 
+class LineInSource;
+
 class advAudio : public Audio {
 public:
   advAudio(AudioSettings &hints);
@@ -18,6 +20,7 @@ public:
   virtual void Close();
   virtual int GetMixerVolume();
   virtual void SetMixerVolume(int volume);
+  virtual LineInSource *GetLineInSource() override;
 
 private:
   AudioSettings hints_;

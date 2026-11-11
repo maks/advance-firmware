@@ -88,6 +88,7 @@ private:
   static uint8_t waveformCache_[CacheSize];
   bool waveformValid_;
   bool needsFullRedraw_;
+  uint32_t graphicsRevision_ = 0;
 
   uint32_t sampleSize_;
   uint8_t zoomLevel_;

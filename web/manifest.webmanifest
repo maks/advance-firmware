@@ -1,0 +1,16 @@
+{
+  "name": "picoTracker Advance",
+  "short_name": "picoTracker",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1015",
+  "theme_color": "#0f1015",
+  "icons": [
+    {
+      "src": "./assets/picture-1080x1080-youtube.jpg",
+      "sizes": "1080x1080",
+      "type": "image/jpeg"
+    }
+  ]
+}

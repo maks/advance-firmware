@@ -44,6 +44,7 @@ public:
   Song song_;
 
   int GetMasterVolume();
+  int GetLineInMixLevel();
   int GetChannelVolume(int channel);
   int GetChannelFXSend(int channel, int fx);
   int GetFXReturnVolume(int fx);
@@ -92,6 +93,9 @@ private:
   // variables
   WatchedVariable tempo_;
   WatchedVariable masterVolume_;
+  // Level of the live line input mixed into the master output. Zero mutes it
+  // and releases the converter.
+  WatchedVariable lineInMixLevel_;
   // Individual channel volume variables instead of using an array
   // as initialization of such a large array causes in constructors causes stack
   // overflow issues

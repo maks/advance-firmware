@@ -12,7 +12,7 @@
 #ifndef _CRITICALERRORMESSAGE_H_
 #define _CRITICALERRORMESSAGE_H_
 
-#include "error_bitmap.h"
+#include "System/Display/ErrorBitmap.h"
 #include <stdbool.h>
 #include <stddef.h>
 

@@ -8,7 +8,7 @@
 #ifndef ERROR_BITMAPS_H
 #define ERROR_BITMAPS_H
 
-#include "Adapters/adv/system/error_bitmap.h"
+#include "System/Display/ErrorBitmap.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -14,7 +14,9 @@
 #include "Trace.h"
 #include "Externals/etl/include/etl/error_handler.h"
 #include "System/System/System.h"
+#ifndef WASM
 #include "tim.h"
+#endif
 #include <string.h>
 
 // be explicit about the nanoprintf configuration
@@ -31,6 +33,10 @@ namespace {
 
 #if !defined(NDEBUG) || defined(ENABLE_LOGGING)
 uint64_t getMonotonicTimestampUs() {
+#if defined(WASM)
+  System *sys = System::GetInstance();
+  return sys ? static_cast<uint64_t>(sys->Micros()) : 0;
+#else
   static uint32_t lastCounter = 0;
   static uint64_t wrapOffset = 0;
 
@@ -41,6 +47,7 @@ uint64_t getMonotonicTimestampUs() {
   lastCounter = counter;
 
   return wrapOffset + counter;
+#endif
 }
 #endif
 

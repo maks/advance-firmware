@@ -1,7 +1,4 @@
 ---
-title: Phrase Screen
-template: page
----
 <!--
 SPDX-License-Identifier: BSD-3-Clause AND GPL-3.0-only
 
@@ -12,6 +9,10 @@ New original contributions by xiphonics, inc. are GPL-3.0-only.
 Previously granted BSD permissions are preserved. See LICENSING.md.
 -->
 
+
+title: Phrase Screen
+template: page
+---
 
 ![screen capture of Phrase screen](image/phrase-screen-small.png)
 
@@ -33,6 +34,7 @@ With a selection active, press <span class="minikeys">ENTER</span>+<span class="
 
 Phrase resampling renders only the selected rows, writes `resample.wav` into the current project's samples folder, and loads it into the sample pool.
 
+
 In Song mode <span class="minikeys">Play</span> starts and stops playback from Step 00, soloing the current phrase
 
 In Live mode <span class="minikeys">Play</span> queues the Edited Chain Step from 00
@@ -43,7 +45,7 @@ In Song mode <span class="minikeys">Play</span>+<span class="minikeys">NAV</span
 
 You can create smooth, continuous transitions between notes on a track by leaving the instrument column e
 mpty when entering a new note. This "ties" the new note to the previous one, continuing the existing voice without retriggering. If `LEG aaxx` command is used, the transition will slide smoothly at `aa` speed.
-
+ 
 For example, entering `C-4 01` followed by `E-4 -- LEG 1000` (with no instrument number on the second note) will play the instrument at C-4, then slide to E-4 without stopping and rettrigering the note. This is especially useful with:
 
 - Tables are not stopped, running commands are not stopped and phase of oscillator and any envelopes for that instrument are **not** reset

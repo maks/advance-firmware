@@ -9,7 +9,6 @@
  */
 
 #include "doctest/doctest.h"
-
 #include "Application/Instruments/WavHeader.h"
 #include "Application/Model/Config.h"
 #include "System/FileSystem/I_File.h"

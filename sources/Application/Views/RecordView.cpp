@@ -21,7 +21,7 @@
 #include "UIController.h"
 #include "ViewData.h"
 
-#include "Adapters/adv/audio/record.h"
+#include "Services/Audio/AudioRecording.h"
 
 static constexpr uint32_t kMaxRecordDurationMs = 30000;
 
@@ -166,14 +166,14 @@ void RecordView::DrawView() {
 
   if (uiSavingActive_) {
     SetColor(CD_ERROR);
-    DrawString(pos._x, pos._y, "SAVING", props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "SAVING", props);
     SetColor(CD_NORMAL);
   } else if (uiRecordingActive_) {
     SetColor(CD_ERROR);
-    DrawString(pos._x, pos._y, "[REC]", props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "[REC]", props);
     SetColor(CD_NORMAL);
   } else {
-    DrawString(pos._x, pos._y, "[---]", props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, "[---]", props);
   }
 
   // Draw time display
@@ -185,11 +185,11 @@ void RecordView::DrawView() {
     char percentBuffer[8];
     uint8_t percent = GetSavingProgressPercent();
     snprintf(percentBuffer, sizeof(percentBuffer), "%3u%%", percent);
-    DrawString(pos._x, pos._y, percentBuffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, percentBuffer, props);
   } else {
     char timeBuffer[16];
     formatTime(recordingDuration_, timeBuffer, sizeof(timeBuffer));
-    DrawString(pos._x, pos._y, timeBuffer, props);
+    DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, timeBuffer, props);
   }
 
   // Draw instructions
@@ -199,7 +199,7 @@ void RecordView::DrawView() {
   const char *instruction = uiSavingActive_      ? ""
                             : uiRecordingActive_ ? "PRESS PLAY TO STOP"
                                                  : "PRESS PLAY TO RECORD";
-  DrawString(pos._x, pos._y, instruction, props);
+  DrawRegionString(TEXT_REGION_BODY, pos._x, pos._y, instruction, props);
 
   // Draw fields
   FieldView::Redraw();
@@ -219,12 +219,13 @@ void RecordView::OnFocus() {
   isDirty_ = true;
   recordingDuration_ = 0;
 
+  StartMonitoring();
+
   auto config = Config::GetInstance();
   SetLineInGain(config->FindVariable(FourCC::VarRecordLineGain)->GetInt());
   SetMicGain(config->FindVariable(FourCC::VarRecordMicGain)->GetInt());
 
   updateRecordingSource();
-  StartMonitoring();
 }
 
 void RecordView::Update(Observable &o, I_ObservableData *data) {
@@ -238,9 +239,7 @@ void RecordView::Update(Observable &o, I_ObservableData *data) {
 
   switch (fourcc) {
   case FourCC::VarRecordSource:
-    StopMonitoring();
     updateRecordingSource();
-    StartMonitoring();
     break;
   case FourCC::VarRecordLineGain:
     SetLineInGain(config->FindVariable(FourCC::VarRecordLineGain)->GetInt());
@@ -271,7 +270,6 @@ void RecordView::AnimationUpdate() {
     // Non-blocking completion check to avoid switching before the record task
     // has finalized and closed the WAV file.
     if (WaitForRecordingStop(0)) {
-      FinishStopRecording();
       uiSavingActive_ = false;
       autoSwitchPending_ = false;
       Trace::Log("RECORD", "Recording stopped");
@@ -280,8 +278,8 @@ void RecordView::AnimationUpdate() {
         // Treat empty captures as cancelled: stay on record view and resume
         // monitoring instead of switching to sample editor.
         recordingDuration_ = 0;
-        updateRecordingSource();
         StartMonitoring();
+        updateRecordingSource();
         isDirty_ = true;
         DrawView();
         return;

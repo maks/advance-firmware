@@ -12,7 +12,10 @@
  */
 
 #include "DeviceView.h"
-#include "Adapters/adv/audio/record.h"
+#if defined(ADV)
+#include "Adapters/adv/audio/tlv320aic3204.h"
+#include "Adapters/adv/usb/usb_audio_handoff.h"
+#endif
 #include "Application/AppWindow.h"
 #include "Application/Model/FirmwareVersion.h"
 #include "Application/Model/Scale.h"
@@ -24,6 +27,7 @@
 #include "BaseClasses/UIIntVarField.h"
 #include "BaseClasses/UITempoField.h"
 #include "Services/Audio/Audio.h"
+#include "Services/Audio/AudioRecording.h"
 #include "Services/Midi/MidiService.h"
 #include "System/System/System.h"
 #include "platform.h"
@@ -75,7 +79,7 @@ DeviceView::DeviceView(GUIWindow &w, ViewData *data) : FieldView(w, data) {
   fieldList_.insert(fieldList_.end(), &(*intVarField_.rbegin()));
   (*intVarField_.rbegin()).AddObserver(*this);
 
-  position._y += 2;
+  position._y += 1;
   v = config->FindVariable(FourCC::VarRemoteUI);
   intVarField_.emplace_back(position, *v, "Remote UI: %s", 0, 1, 1, 1);
   fieldList_.insert(fieldList_.end(), &(*intVarField_.rbegin()));
@@ -103,6 +107,13 @@ DeviceView::DeviceView(GUIWindow &w, ViewData *data) : FieldView(w, data) {
   (*intVarField_.rbegin()).AddObserver(*this);
 
   position._y += 1;
+  v = config->FindVariable(FourCC::VarAudioOutput);
+  intVarField_.emplace_back(position, *v, "Audio Output: %s", 0,
+                            v->GetListSize() - 1, 1, 1);
+  fieldList_.insert(fieldList_.end(), &(*intVarField_.rbegin()));
+  (*intVarField_.rbegin()).AddObserver(*this);
+
+  position._y += 1;
   v = config->FindVariable(FourCC::VarInstrumentAudition);
   intVarField_.emplace_back(position, *v, "Instrument Audition: %s", 0, 1, 1,
                             1);
@@ -124,6 +135,7 @@ DeviceView::DeviceView(GUIWindow &w, ViewData *data) : FieldView(w, data) {
   // y=17 -> y=20, just above Battery health (y=21)
   position._y += 3;
   actionField_.emplace_back("Credits", FourCC::ActionShowCredits, position);
+  actionField_.back().SetTextRegion(TEXT_REGION_BODY_LOWER, 4, 17);
   fieldList_.insert(fieldList_.end(), &(*actionField_.rbegin()));
   (*actionField_.rbegin()).AddObserver(*this);
 }
@@ -157,6 +169,19 @@ void DeviceView::ProcessButtonMask(unsigned short mask, bool pressed) {
   };
 };
 
+void DeviceView::AnimationUpdate() {
+  ScreenView::AnimationUpdate();
+#if defined(ADV)
+  // Poll atomic USB state from the GUI task, including when playback is
+  // stopped. USB callbacks must never draw or access view state directly.
+  const bool inactive =
+      usbMasterAudioOutputSelected() && !usbMasterAudioIsStreaming();
+  if (inactive != usbStreamInactive_) {
+    SetDirty(true);
+  }
+#endif
+}
+
 void DeviceView::DrawView() {
 
   Clear();
@@ -168,10 +193,11 @@ void DeviceView::DrawView() {
   FieldView::Redraw();
 
   // Draw battery health
-  pos._x = SCREEN_MAP_WIDTH + 1;
-  pos._y = 21;
+  pos._x = 1;
+  pos._y = 1;
   SetColor(CD_NORMAL);
-  DrawString(pos._x, pos._y, "Battery health:", props);
+  DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y,
+                   "Battery health:", props);
 
   pos._x += strlen("Battery health") + 1;
   int16_t soh = battery_health();
@@ -179,17 +205,32 @@ void DeviceView::DrawView() {
   (soh < 0) ? npf_snprintf(sohText, sizeof(sohText), "%s", "NA")
             : npf_snprintf(sohText, sizeof(sohText), "%i%%", soh);
   SetColor(CD_NORMAL);
-  DrawString(pos._x, pos._y, sohText, props);
+  DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, sohText, props);
+
+#if defined(ADV)
+  usbStreamInactive_ =
+      usbMasterAudioOutputSelected() && !usbMasterAudioIsStreaming();
+  if (usbStreamInactive_) {
+    pos._x = SCREEN_MAP_WIDTH + 1;
+    pos._y = 19;
+    DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y,
+                     "USB stream inactive", props);
+  }
+#endif
 
   SetColor(CD_NORMAL);
   drawMap();
 
-  pos._x = SCREEN_MAP_WIDTH + 1;
-  pos._y = SCREEN_HEIGHT - 1;
+  pos._x = 1;
+  pos._y = 3;
 
   const FirmwareVersionString buildString = FormatFirmwareRelease();
   SetColor(CD_NORMAL);
-  DrawString(pos._x, pos._y, buildString.c_str(), props);
+  DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, buildString.c_str(),
+                   props);
+  pos._x += static_cast<int16_t>(buildString.size()) + 1;
+  // TODO: Add board detection here; show the Advance board until then.
+  DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, "Adv", props);
 };
 
 void DeviceView::Update(Observable &, I_ObservableData *data) {
@@ -283,6 +324,21 @@ void DeviceView::Update(Observable &, I_ObservableData *data) {
     configDirty_ = true;
     break;
   }
+  case FourCC::VarAudioOutput: {
+#if defined(ADV)
+    Variable *output =
+        Config::GetInstance()->FindVariable(FourCC::VarAudioOutput);
+    const int mode = output != nullptr
+                         ? output->GetInt()
+                         : static_cast<int>(AudioOutputMode::Analog);
+    const bool usbSelected = mode != static_cast<int>(AudioOutputMode::Analog);
+    const bool analogEnabled = mode != static_cast<int>(AudioOutputMode::Usb);
+    usbMasterAudioSetOutputSelected(usbSelected);
+    tlv320_set_analog_output_enabled(analogEnabled);
+#endif
+    configDirty_ = true;
+    break;
+  }
   default:
     NInvalid;
     break;
@@ -296,7 +352,7 @@ void DeviceView::drawSectionHeaders() {
   const GUIPoint anchor = GetAnchor();
 
   SetColor(CD_HILITE2);
-  DrawString(anchor._x, anchor._y, "MIDI", props);
+  DrawRegionString(TEXT_REGION_BODY, anchor._x, anchor._y, "MIDI", props);
 }
 
 void DeviceView::addSwatchField(ColorDefinition color, GUIPoint position) {

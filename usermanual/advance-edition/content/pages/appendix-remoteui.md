@@ -49,20 +49,9 @@ Parameters:
 * Green (`0x00`-`0xFF`, escaped)
 * Blue (`0x00`-`0xFF`, escaped)
 
-4. `SETFONT_CMD (0x05)`
+Command `0x05` is reserved for the obsolete global font setting and is no longer sent.
 
-Parameters:
-
-* Font index  (offset by ASCII_SPACE_OFFSET)
-
-Currently the only available fonts are:
-
- | Index | Font   
- | ----- | -----
- | 0x00  | Hourglass
- | 0x01  | You Squared
-
-5. `DRAWRECT_CMD (0x06)`: Draw a rectangle (can be used for pixel drawing)
+4. `DRAWRECT_CMD (0x06)`: Draw a rectangle (can be used for pixel drawing)
 
 Parameters:
 
@@ -71,6 +60,33 @@ Parameters:
 * Width (16-bit, Little Endian, escaped)
 * Height (16-bit, Little Endian, escaped)
 
+
+### Fonts and region text
+
+Advance sends text with `GLYPH_CMD (0x07)` or `CLIPPED_GLYPH_CMD (0x0C)`.
+Each command identifies its font directly; clients must have the matching font
+assets. Text is never transmitted as pixel data.
+
+Both commands contain these escaped parameters, in order:
+
+* Target (one byte; 0 is the base screen, 1 or 2 is an overlay)
+* Font ID (one byte)
+* Character code (one byte)
+* Invert flag (one byte, 0 or 1)
+* X and Y pixel coordinates (each 16-bit, little endian)
+
+`CLIPPED_GLYPH_CMD` then adds the clip rectangle's left, top, width and height,
+each as an escaped 16-bit little-endian value.
+
+| Font ID | Asset | Glyph size |
+| --- | --- | --- |
+| 0 | FONT | 22 × 30 pixels |
+| 1 | FONTSMALL | 16 × 24 pixels |
+| 2 | FONTTINY | 10 × 15 pixels |
+
+The title bar is 704 pixels wide, fitting 44 small-font characters. Font IDs
+refer to fixed assets, not a user-selected global style. The older `TEXT_CMD`
+format above is a legacy command; current Advance region text uses glyph commands.
 
 ### Character Escaping
 
@@ -110,7 +126,7 @@ Clients are also able to send input events to the picoTracker. As for output com
 
 The events currently supported are:
 
-1. `FULL_REFRESH_CMD (0x02)`: Request sending all the current screen and current font
+1. `FULL_REFRESH_CMD (0x02)`: Request a full screen refresh; text commands include their font IDs
 
 Parameters:
 

@@ -32,7 +32,8 @@ UIBigHexVarField::UIBigHexVarField(const GUIPoint &position, Variable &v,
 void UIBigHexVarField::Draw(GUIWindow &w, int offset) {
 
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   char buffer[MAX_FIELD_WIDTH + 1];
@@ -59,7 +60,7 @@ void UIBigHexVarField::Draw(GUIWindow &w, int offset) {
       w.DrawString(buffer + offset, position, props);
     }
   } else {
-    DrawLabeledField(w, position, buffer);
+    DrawLabeledField(w, position, buffer, props);
   }
 };
 

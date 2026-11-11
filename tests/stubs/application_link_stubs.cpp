@@ -112,6 +112,12 @@ void MidiService::QueueMessage(MidiMessage &message) {
   }
 }
 
+void MidiService::SendImmediate(MidiMessage &message) {
+  if (gQueuedMidiMessageCount < kQueuedMidiMessageCapacity) {
+    gQueuedMidiMessages[gQueuedMidiMessageCount++] = message;
+  }
+}
+
 void MidiService::RegisterActiveChannel(uint8_t channel) { (void)channel; }
 
 bool MidiService::IsInputProgramSelected(int midiChannel,

@@ -20,7 +20,6 @@
 #include "Player/Player.h"
 #include "System/Console/Trace.h"
 #include "System/FileSystem/FileSystem.h"
-#include "System/Profiler/DWTProfiler.h"
 #include "System/System/System.h"
 #include "UIFramework/SimpleBaseClasses/EventManager.h"
 #include "UIFramework/SimpleBaseClasses/GUIWindow.h"
@@ -33,34 +32,11 @@
 // devices LCD
 static uint8_t lastRemoteColorIdx = 255;
 
-namespace {
-
-constexpr uint16_t kProfileOrderGraphicsBackend = 70;
-
-DWTProfileStats gGraphicsBackendProfile = {
-    .name_ = "gfx draw",
-    .printLast_ = true,
-};
-
-void registerAdvGuiWindowProfiles() {
-  static bool registered = false;
-  if (registered) {
-    return;
-  }
-
-  gGraphicsBackendProfile.displayOrder_ = kProfileOrderGraphicsBackend;
-  RegisterDWTProfileStats(&gGraphicsBackendProfile);
-  registered = true;
-}
-
-} // namespace
-
 void appwindow_set_sdcard_present(bool present);
 
 advGUIWindowImp *instance_;
 
 advGUIWindowImp::advGUIWindowImp(GUICreateWindowParams &p) {
-  registerAdvGuiWindowProfiles();
 
   // stash ref to singleton for use in static methods
   instance_ = this;
@@ -74,46 +50,80 @@ advGUIWindowImp::advGUIWindowImp(GUICreateWindowParams &p) {
   remoteUIVar->AddObserver(*this);
   auto remoteui = remoteUIVar->GetInt();
   remoteUIEnabled_ = remoteui != 0;
-
-  auto uiFontVar = (WatchedVariable *)config->FindVariable(FourCC::VarUIFont);
-  // register to receive updates to remoteui setting
-  uiFontVar->AddObserver(*this);
-  auto uifontIndex = uiFontVar->GetInt();
-  display_set_font_index(uifontIndex);
-  if (remoteUIEnabled_) {
-    SendFont(uifontIndex);
-  }
+  display_set_overlay_observer(remoteUIEnabled_ ? ObserveOverlay : nullptr);
 };
 
 advGUIWindowImp::~advGUIWindowImp() {}
 
-void advGUIWindowImp::SendFont(uint8_t uifontIndex) {
-  char remoteUIBuffer[3];
-  remoteUIFontCommand(uifontIndex, remoteUIBuffer);
-  sendToUSBCDCBuffered(remoteUIBuffer, 3);
-}
-
 void advGUIWindowImp::DrawChar(const char c, const GUIPoint &pos,
                                const GUITextProperties &p) {
   //  Trace::Debug("Draw char \"%c\" at pos x:%ld (%ld), y:%ld (%ld) - invert:
-  //  %d", c, pos._x, pos._x / 8, pos._y, pos._y / 8, p.invert_);
+  //  %d", c, pos._x, pos._x, pos._y, pos._y, p.invert_);
 
-  uint8_t x = pos._x / 8;
-  uint8_t y = pos._y / 8;
-  display_set_cursor(x, y);
-  display_putc(c, p.invert_);
-  if (remoteUIEnabled_) {
-    char remoteUIBuffer[6];
-    remoteUIDrawCharCommand(c, x, y, p.invert_, remoteUIBuffer);
-    sendToUSBCDCBuffered(remoteUIBuffer, 6); // Use the buffered function
+  int32_t x = pos._x;
+  int32_t y = pos._y;
+  if (x < 0 || y < 0 || x > 255 || y > 255)
+    return;
+  uint8_t target = display_target();
+  if (target) {
+    if (x >= 32 || y >= 24)
+      return;
+    display_draw_overlay_char(x, y, c, p.invert_);
+  } else {
+    display_putc_region(p.region_, x, y, c, p.invert_);
   }
+  // Send native glyph identity and clipping, including hidden updates. The
+  // client has the fonts and routes covered drawing into its own live backing.
+  if (!remoteUIEnabled_)
+    return;
+  GraphicsRegion bounds;
+  uint8_t font = TEXT_FONT_NORMAL;
+  if (target) {
+    bounds = {int16_t(8 + x * 22), int16_t(y * 30), 22, 30};
+  } else {
+    int32_t column = x, row = y;
+    uint8_t id = p.region_;
+    if (id >= display_text_layout()->count || column < 0 || row < 0)
+      return;
+    const TextRegionInfo &r = display_text_layout()->regions[id];
+    if (column >= r.columns || row >= r.rows)
+      return;
+    font = r.definition.font;
+    bounds = {int16_t(r.definition.x + column * r.glyph_width),
+              int16_t(r.definition.y + row * r.glyph_height), r.glyph_width,
+              r.glyph_height};
+  }
+  uint8_t character = static_cast<uint8_t>(c);
+  if (character < 32)
+    return;
+  if (character - 32 >= text_font(font)->count)
+    character = '?';
+  struct GlyphCommand {
+    advGUIWindowImp *window;
+    GraphicsRegion bounds;
+    uint8_t target, font, character;
+    bool invert;
+  } command{this, bounds, target, font, character, p.invert_};
+  display_visit_pixels(
+      bounds, true,
+      [](void *ctx, GraphicsRegion clip, uint16_t *, uint16_t, bool) {
+        auto &g = *static_cast<GlyphCommand *>(ctx);
+        g.window->SendGlyph(g.target, g.font, g.character, g.invert, g.bounds,
+                            clip);
+      },
+      &command);
 }
 
 void advGUIWindowImp::DrawString(const char *string, const GUIPoint &pos,
                                  const GUITextProperties &p, bool overlay) {
   Trace::Debug("draw string");
-  display_set_cursor(pos._x, pos._y);
-  display_print(string, p.invert_);
+  if (!string)
+    return;
+  GUIPoint cell(pos);
+  while (*string) {
+    DrawChar(*string++, cell, p);
+    ++cell._x;
+  }
 };
 
 void advGUIWindowImp::DrawRect(GUIRect &r) {
@@ -121,14 +131,45 @@ void advGUIWindowImp::DrawRect(GUIRect &r) {
   display_fill_rect(lastRemoteColorIdx, r.Left(), r.Top(), r.Width(),
                     r.Height());
   if (remoteUIEnabled_) {
-    // Now, send the DrawRect command with full byte-escaping.
-    // Worst-case buffer: 2 (header) + 4 * 2-byte-values * 2 (if all are
-    // escaped) = 18 bytes.
-    char remoteUIBuffer[20];
-    auto bufferIndex = remoteUIDrawRectCommand(r.Left(), r.Top(), r.Width(),
-                                               r.Height(), remoteUIBuffer);
-    sendToUSBCDCBuffered(remoteUIBuffer, bufferIndex);
+    display_visit_pixels(
+        {int16_t(r.Left()), int16_t(r.Top()), int16_t(r.Width()),
+         int16_t(r.Height())},
+        false,
+        [](void *context, GraphicsRegion bounds, uint16_t *, uint16_t, bool) {
+          static_cast<advGUIWindowImp *>(context)->SendRect(bounds);
+        },
+        this);
   }
+}
+
+void advGUIWindowImp::ObserveOverlay(DisplayOverlayEvent event,
+                                     GraphicsRegion bounds) {
+  RemoteUICommand command =
+      event == DISPLAY_OVERLAY_PUSH
+          ? OVERLAY_PUSH_CMD
+          : (event == DISPLAY_OVERLAY_POP ? OVERLAY_POP_CMD
+                                          : OVERLAY_RESET_CMD);
+  char buffer[18];
+  uint16_t size = remoteUIOverlayCommand(command, bounds, buffer);
+  instance_->sendToUSBCDCBuffered(buffer, size);
+}
+
+void advGUIWindowImp::SendRect(GraphicsRegion r) {
+  // Full escaping: marker, command, target and four two-byte coordinates.
+  char buffer[20];
+  uint16_t size = remoteUITargetRectCommand(display_target(), r, buffer);
+  sendToUSBCDCBuffered(buffer, size);
+}
+
+void advGUIWindowImp::SendGlyph(uint8_t target, uint8_t font, uint8_t c,
+                                bool invert, GraphicsRegion glyph,
+                                GraphicsRegion clip) {
+  char buffer[34];
+  const bool clipped = clip.x != glyph.x || clip.y != glyph.y ||
+                       clip.width != glyph.width || clip.height != glyph.height;
+  uint16_t size = remoteUIGlyphCommand(target, font, c, invert, glyph.x,
+                                       glyph.y, clip, clipped, buffer);
+  sendToUSBCDCBuffered(buffer, size);
 }
 
 void advGUIWindowImp::Clear(GUIColor &c, bool overlay) {
@@ -173,7 +214,6 @@ void advGUIWindowImp::Lock(){};
 void advGUIWindowImp::Unlock(){};
 
 void advGUIWindowImp::Flush() {
-  ScopedDWTProfile graphicsBackendProfile(&gGraphicsBackendProfile);
   display_draw_changed();
   // send buffered UI draw cmds out over USB
   if (remoteUIEnabled_) {
@@ -199,13 +239,6 @@ void advGUIWindowImp::ProcessEvent(Event &event) {
   switch (event.type_) {
   case REDRAW:
     instance_->_window->Update(true);
-    // send font update
-    if (instance_->remoteUIEnabled_) {
-      Config *config = Config::GetInstance();
-      auto uiFontVar = config->FindVariable(FourCC::VarUIFont);
-      int uifontIndex = uiFontVar->GetInt();
-      instance_->SendFont(uifontIndex);
-    }
     break;
   case FLUSH:
     instance_->_window->Update(false);
@@ -293,12 +326,10 @@ void advGUIWindowImp::Update(Observable &o, I_ObservableData *d) {
   case FourCC::VarRemoteUI: {
     auto remoteui = v.GetInt();
     remoteUIEnabled_ = remoteui != 0;
-  } break;
-  case FourCC::VarUIFont: {
-    auto uifont = v.GetInt();
-    display_set_font_index(uifont);
+    display_set_overlay_observer(remoteUIEnabled_ ? ObserveOverlay : nullptr);
     if (remoteUIEnabled_) {
-      SendFont(uifont);
+      Event event(REDRAW);
+      xQueueSend(eventQueue, &event, 0);
     }
   } break;
   }

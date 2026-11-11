@@ -26,14 +26,23 @@ constexpr int MixerStripX = 5;
 constexpr int MixerStripStride = 3;
 // VU meters grow upwards from a baseline at (anchorY + height - 1). The strip
 // labels sit one row below the baseline and the VOL field one row below that.
-// The meters leave room for the permanent FX send rows above the bottom map.
-constexpr int MixerVuMeterHeight = 9;
-constexpr int MixerStripLabelY = 12;
-constexpr int MixerFieldBaseY = 13;
+// The meters leave room for the permanent FX send rows and the line input row
+// above the bottom map.
+constexpr int MixerVuMeterHeight = 7;
+constexpr int MixerStripLabelY = 7;
+constexpr int MixerFieldBaseY = 8;
 constexpr int MixerRowLabelX = 1;
 constexpr int MixerMasterStripIndex = SONG_CHANNEL_COUNT;
+constexpr int MixerMasterVuXOffset = MixerMasterStripIndex * MixerStripStride;
 constexpr int MixerVolumeRow = 0;
 constexpr int MixerFirstEffectRow = 1;
+// The live line input sits below the sends and only ever occupies the channel
+// 01 column. Its meter grows upwards from one row under the channel meters, and
+// the level value goes underneath it, on the last row of the body.
+constexpr int MixerLineInRow = 3;
+constexpr int MixerLineInVuRows = 5;
+constexpr int MixerLineInVuBaseY = MixerFieldBaseY + MixerVuMeterHeight;
+constexpr int MixerLineInValueY = MixerLineInVuBaseY + 1;
 // Keep FX1 and FX2 available in the model while hiding their Mixer rows.
 constexpr int MixerFirstVisibleEffectIndex = kOutputEffectDelayIndex;
 constexpr int MixerVisibleEffectCount =
@@ -47,8 +56,6 @@ int32_t ScaleVuBarsForHeight(int32_t bars, int meterHeight) {
   return std::min<int32_t>((bars * localMeterMax) / VU_METER_MAX,
                            localMeterMax);
 }
-
-constexpr int MixerMasterVuXOffset = MixerMasterStripIndex * MixerStripStride;
 
 FourCC GetChannelVolumeFourCC(int channel) {
   static const FourCC ids[] = {
@@ -121,6 +128,8 @@ void CopyShortName(const char *source, char *destination) {
 
 MixerView::MixerView(GUIWindow &w, ViewData *viewData)
     : FieldView(w, viewData), selectedStrip_(0), selectedRow_(0) {
+  static_assert(MixerLineInRow == MixerRowCount - 1,
+                "the line input row must stay the last mixer row");
   for (int strip = 0; strip < MixerStripCount; ++strip) {
     for (int row = 0; row < MixerRowCount; ++row) {
       fieldGrid_[strip][row] = nullptr;
@@ -138,6 +147,7 @@ void MixerView::Reset() {
   channelSendFields_.clear();
   fxReturnFields_.clear();
   masterVolumeField_.clear();
+  lineInMixField_.clear();
 
   for (int strip = 0; strip < MixerStripCount; ++strip) {
     for (int row = 0; row < MixerRowCount; ++row) {
@@ -221,6 +231,11 @@ void MixerView::updateCursor(int dx, int dy) {
   }
   if (selectedStrip_ >= MixerStripCount) {
     selectedStrip_ = MixerStripCount - 1;
+  }
+
+  // The line input has no strip of its own, so its row stays under channel 01.
+  if (selectedRow_ == MixerLineInRow) {
+    selectedStrip_ = 0;
   }
 
   syncFocusToSelection();
@@ -361,6 +376,7 @@ void MixerView::initMixerFields() {
   channelSendFields_.clear();
   fxReturnFields_.clear();
   masterVolumeField_.clear();
+  lineInMixField_.clear();
 
   for (int channel = 0; channel < SONG_CHANNEL_COUNT; ++channel) {
     GUIPoint volumePos(GetMixerStripX(channel), MixerFieldBaseY);
@@ -416,6 +432,19 @@ void MixerView::initMixerFields() {
     fieldList_.insert(fieldList_.end(), field);
   }
 
+  // The line input level. It is mixed into the master output after the master
+  // bus, so unlike the channels it has no delay or reverb send of its own. It
+  // reads out under its meter rather than on the row the sends end at.
+  GUIPoint lineInPos(GetMixerStripX(0), MixerLineInValueY);
+  Variable *lineInLevel = project->FindVariable(FourCC::VarLineInMixLevel);
+  if (lineInLevel) {
+    lineInMixField_.emplace_back(lineInPos, *lineInLevel, "%2.2X", 0,
+                                 Project::MixerVolumeMaximum, 1, 0x10);
+    UIField *field = &(*lineInMixField_.begin());
+    fieldGrid_[0][MixerLineInRow] = field;
+    fieldList_.insert(fieldList_.end(), field);
+  }
+
   syncFocusToSelection();
 }
 
@@ -424,6 +453,8 @@ void MixerView::drawMixerLabels(Player *player, GUITextProperties props) {
     char rowLabel[4];
     if (row == MixerVolumeRow) {
       CopyShortName("VOL", rowLabel);
+    } else if (row == MixerLineInRow) {
+      CopyShortName("LIN", rowLabel);
     } else {
       CopyShortName(
           GetOutputEffectShortNameForSlot(GetEffectIndexForMixerRow(row)),
@@ -437,7 +468,11 @@ void MixerView::drawMixerLabels(Player *player, GUITextProperties props) {
       SetColor(CD_NORMAL);
       props.invert_ = false;
     }
-    DrawString(MixerRowLabelX, MixerFieldBaseY + row, rowLabel, props);
+    // The line input label follows its value under the meter, so that the two
+    // still read together.
+    const int labelY =
+        row == MixerLineInRow ? MixerLineInValueY : MixerFieldBaseY + row;
+    DrawRegionString(TEXT_REGION_BODY, MixerRowLabelX, labelY, rowLabel, props);
   }
 
   for (int strip = 0; strip < MixerStripCount; ++strip) {
@@ -463,7 +498,8 @@ void MixerView::drawMixerLabels(Player *player, GUITextProperties props) {
       props.invert_ = false;
     }
 
-    DrawString(GetMixerStripX(strip), MixerStripLabelY, label, props);
+    DrawRegionString(TEXT_REGION_BODY, GetMixerStripX(strip), MixerStripLabelY,
+                     label, props);
   }
 
   SetColor(CD_NORMAL);
@@ -480,8 +516,9 @@ void MixerView::DrawView() {
   props.invert_ = false;
   drawMixerLabels(player, props);
   FieldView::Redraw();
-  drawMasterVuMeter(player, props, false, MixerMasterVuXOffset,
-                    MixerVuMeterHeight);
+  drawMasterVuMeter(player, props, true, MixerMasterVuXOffset,
+                    MixerVuMeterHeight, false);
+  drawLineInVuMeter(props, true);
   drawMap();
   drawNotes();
 
@@ -512,8 +549,10 @@ void MixerView::AnimationUpdate() {
   if (levels) {
     drawChannelVUMeters(levels, player, props);
     drawMasterVuMeter(player, props, false, MixerMasterVuXOffset,
-                      MixerVuMeterHeight);
+                      MixerVuMeterHeight, false);
   }
+
+  drawLineInVuMeter(props, false);
 
   drawNotes();
 
@@ -556,6 +595,19 @@ void MixerView::drawChannelVUMeters(
                 MixerVuMeterHeight);
     pos._x += MixerStripStride;
   }
+}
+
+void MixerView::drawLineInVuMeter(GUITextProperties props, bool forceRedraw) {
+  // Use body-local rows, as the editable level field does. The meter's
+  // baseline is one row above that field.
+  int32_t leftBars = 0;
+  int32_t rightBars = 0;
+  amplitudeToBars(MixerService::GetInstance()->GetLineInLevels(), &leftBars,
+                  &rightBars);
+
+  GUIPoint pos(GetMixerStripX(0), MixerLineInVuBaseY);
+  drawVUMeter(leftBars, rightBars, pos, props, VU_LINE_IN_INDEX, forceRedraw,
+              MixerLineInVuRows);
 }
 
 void MixerView::togglePlay() {

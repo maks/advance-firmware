@@ -24,6 +24,14 @@
 
 class InstrumentImportView : public ScreenView {
 public:
+  TextLayout GetTextLayout() const override {
+    static constexpr TextRegion regions[] = {
+        {8, 4, 704, 24, TEXT_FONT_SMALL},
+        {8, 30, 704, 690, TEXT_FONT_NORMAL},
+    };
+    return {regions, sizeof(regions) / sizeof(regions[0])};
+  }
+
   // Dx7Patch browses SD-card .syx bank files. It is entered from the FM6
   // preset browser's [SDCard] entry, and ".." at the filesystem root returns
   // there.

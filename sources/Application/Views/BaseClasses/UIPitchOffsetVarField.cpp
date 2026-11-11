@@ -20,7 +20,8 @@ UIPitchOffsetVarField::UIPitchOffsetVarField(const GUIPoint &position,
 
 void UIPitchOffsetVarField::Draw(GUIWindow &window, int offset) {
   GUITextProperties properties;
-  GUIPoint position = GetPosition();
+  properties.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   const auto value =
@@ -34,6 +35,6 @@ void UIPitchOffsetVarField::Draw(GUIWindow &window, int offset) {
     properties.invert_ = true;
     window.DrawString(buffer, position, properties);
   } else {
-    DrawLabeledField(window, position, buffer);
+    DrawLabeledField(window, position, buffer, properties);
   }
 }

@@ -27,7 +27,8 @@ template <uint8_t MaxLength>
 void UITextField<MaxLength>::Draw(GUIWindow &w, int offset) {
 
   GUITextProperties props;
-  GUIPoint position = GetPosition();
+  props.region_ = GetTextRegion();
+  GUIPoint position = GetTextPosition();
   position._y += offset;
 
   ((AppWindow &)w).SetColor(CD_NORMAL);

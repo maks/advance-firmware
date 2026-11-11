@@ -34,6 +34,14 @@
 
 class ThemeView : public FieldView, public I_Observer {
 public:
+  TextLayout GetTextLayout() const override {
+    static constexpr TextRegion regions[] = {
+        {8, 4, 704, 24, TEXT_FONT_SMALL},
+        {8, 30, 704, 690, TEXT_FONT_NORMAL},
+    };
+    return {regions, sizeof(regions) / sizeof(regions[0])};
+  }
+
   ThemeView(GUIWindow &w, ViewData *data);
   virtual ~ThemeView();
   void Reset();
@@ -73,8 +81,8 @@ private:
 
   ColorComponentField *findColorComponentField(Observable *observable);
 
-  etl::vector<UIIntVarField, (COLOR_SUB_FIELDS_COUNT + 1)>
-      intVarField_; // for colors + 1 for font selector
+  // One field per colour component. Fonts are fixed by each text region.
+  etl::vector<UIIntVarField, COLOR_SUB_FIELDS_COUNT> intVarField_;
   etl::vector<UISwatchField, COLOR_COUNT> swatchField_;
   etl::vector<UIStaticField, COLOR_COUNT> staticField_;
   etl::vector<Variable, COLOR_SUB_FIELDS_COUNT> colorComponentVars_;
@@ -98,6 +106,7 @@ private:
   // need separate flag for force because isDirty_ won't work for this because
   // it gets reset before AnimationUpdate is called in ThemeViews case
   bool _forceRedraw = false;
+  uint32_t lastBackgroundColor_ = 0;
   // use to flag pending theme data changes to be persisted to file
   bool configDirty_ = false;
 };

@@ -71,12 +71,11 @@ void FM6PresetBrowserView::DrawView() {
   setTitle(etl::string<23>("FM6 Presets"));
 
   GUITextProperties props;
-  const GUIPoint pos = GetTitlePosition();
   const int bankX = 1;
   // Bank names are capped at 12 chars, so a fixed 13-char offset leaves the
   // patch column clear of the widest bank name plus a one-char gap.
   const int patchX = bankX + 13;
-  const int yTop = pos._y + 2;
+  const int yTop = 1;
   const size_t bankCount = builtInBankCount();
 
   // Left column: [SDCard] followed by each bank. This always fits without
@@ -97,12 +96,12 @@ void FM6PresetBrowserView::DrawView() {
       props.invert_ = false;
     }
     if (row == 0) {
-      DrawString(bankX, y, "[SDCard]", props);
+      DrawRegionString(TEXT_REGION_BODY, bankX, y, "[SDCard]", props);
     } else {
-      DrawString(bankX, y,
-                 fm6::GetBuiltInPatchBankName(
-                     static_cast<int32_t>((row - 1) * fm6::Dx7PresetBankSize)),
-                 props);
+      DrawRegionString(TEXT_REGION_BODY, bankX, y,
+                       fm6::GetBuiltInPatchBankName(static_cast<int32_t>(
+                           (row - 1) * fm6::Dx7PresetBankSize)),
+                       props);
     }
   }
 
@@ -126,8 +125,9 @@ void FM6PresetBrowserView::DrawView() {
     const size_t program = bankIndex * fm6::Dx7PresetBankSize + i;
     // GetBuiltInPatchName returns a shared scratch buffer; DrawString copies it
     // before the next iteration overwrites it.
-    DrawString(patchX, y,
-               fm6::GetBuiltInPatchName(static_cast<int32_t>(program)), props);
+    DrawRegionString(TEXT_REGION_BODY, patchX, y,
+                     fm6::GetBuiltInPatchName(static_cast<int32_t>(program)),
+                     props);
   }
 }
 
