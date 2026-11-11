@@ -12,9 +12,10 @@
  */
 
 #include "DeviceView.h"
-#include "Adapters/adv/audio/record.h"
+#if defined(ADV)
 #include "Adapters/adv/audio/tlv320aic3204.h"
 #include "Adapters/adv/usb/usb_audio_handoff.h"
+#endif
 #include "Application/AppWindow.h"
 #include "Application/Model/FirmwareVersion.h"
 #include "Application/Model/Scale.h"
@@ -170,6 +171,7 @@ void DeviceView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
 void DeviceView::AnimationUpdate() {
   ScreenView::AnimationUpdate();
+#if defined(ADV)
   // Poll atomic USB state from the GUI task, including when playback is
   // stopped. USB callbacks must never draw or access view state directly.
   const bool inactive =
@@ -177,6 +179,7 @@ void DeviceView::AnimationUpdate() {
   if (inactive != usbStreamInactive_) {
     SetDirty(true);
   }
+#endif
 }
 
 void DeviceView::DrawView() {
@@ -204,6 +207,7 @@ void DeviceView::DrawView() {
   SetColor(CD_NORMAL);
   DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y, sohText, props);
 
+#if defined(ADV)
   usbStreamInactive_ =
       usbMasterAudioOutputSelected() && !usbMasterAudioIsStreaming();
   if (usbStreamInactive_) {
@@ -212,6 +216,7 @@ void DeviceView::DrawView() {
     DrawRegionString(TEXT_REGION_BODY_LOWER, pos._x, pos._y,
                      "USB stream inactive", props);
   }
+#endif
 
   SetColor(CD_NORMAL);
   drawMap();
@@ -320,6 +325,7 @@ void DeviceView::Update(Observable &, I_ObservableData *data) {
     break;
   }
   case FourCC::VarAudioOutput: {
+#if defined(ADV)
     Variable *output =
         Config::GetInstance()->FindVariable(FourCC::VarAudioOutput);
     const int mode = output != nullptr
@@ -329,6 +335,7 @@ void DeviceView::Update(Observable &, I_ObservableData *data) {
     const bool analogEnabled = mode != static_cast<int>(AudioOutputMode::Usb);
     usbMasterAudioSetOutputSelected(usbSelected);
     tlv320_set_analog_output_enabled(analogEnabled);
+#endif
     configDirty_ = true;
     break;
   }
