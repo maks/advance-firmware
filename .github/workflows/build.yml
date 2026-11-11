@@ -1,0 +1,124 @@
+name: Build
+on: 
+  push:
+    branches:
+      - master
+      - '*release'
+      - experimental
+    paths:
+      - sources/**
+      - tests/**
+      - tools/build-wasm.sh
+      - cmake/wasm/**
+      - data/web-factory-content/**
+      - .github/scripts/**
+      - .github/workflows/**
+  pull_request:
+    branches:
+      - master
+      - '*release'
+      - experimental
+    paths:
+      - sources/**
+      - tests/**
+      - tools/build-wasm.sh
+      - cmake/wasm/**
+      - data/web-factory-content/**
+      - .github/scripts/**
+      - .github/workflows/**
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+
+    - name: Checkout submodules
+      working-directory: ${{github.workspace}}
+      run: git submodule update --init --recursive
+
+    - name: Install Arm GNU Toolchain (arm-none-eabi-gcc)
+      uses: carlosperate/arm-none-eabi-gcc-action@v1
+      id: arm-none-eabi-gcc-action
+      with:
+        release: 13.2.Rel1
+    - run: arm-none-eabi-gcc --version
+
+    - name: Set Build Number
+      shell: bash
+      env:
+          GH_RUN_NUMBER: ${{ github.run_number }}
+      run: echo "#define BUILD_COUNT \"$GH_RUN_NUMBER\"" > sources/Application/Model/BuildNumber.h
+
+    - name: Configure Host Tests
+      working-directory: ${{github.workspace}}
+      shell: bash
+      run: cmake -S tests -B build-host
+
+    - name: Build Host Tests
+      working-directory: ${{github.workspace}}
+      shell: bash
+      run: cmake --build build-host --parallel $(nproc)
+
+    - name: Run Host Tests
+      working-directory: ${{github.workspace}}
+      shell: bash
+      run: ./build-host/picoTracker_tests
+
+    - name: Run Host Boundary Tests
+      working-directory: ${{github.workspace}}
+      shell: bash
+      run: ./build-host/picoTracker_boundary_tests
+
+ # Advance Build Steps
+    - name: Create Build Environment for Advance
+      working-directory: ${{github.workspace}}
+      run:  cmake -E make_directory ${{github.workspace}}/build-advance
+
+    - name: Configure CMake for Advance
+      shell: bash
+      working-directory: ${{github.workspace}}/build-advance
+      run: cmake ../sources -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DADV=true
+
+    - name: Build Advance Firmware
+      working-directory: ${{github.workspace}}/build-advance
+      shell: bash
+      run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: picoTracker_advance
+        path: ${{github.workspace}}/build-advance/Adapters/adv/picoTrackerAdvance.bin
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: picoTracker_advance_memmap
+        path: ${{github.workspace}}/build-advance/picoTrackerAdvance.map
+
+  wasm-build:
+    name: Build WebAssembly
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Checkout submodules
+      run: git submodule update --init --recursive
+
+    - name: Setup Emscripten SDK
+      uses: emscripten-core/setup-emsdk@v16
+      with:
+        version: 6.0.5
+
+    - name: Verify Emscripten toolchain
+      run: em++ --version
+
+    - name: Build WebAssembly target
+      run: tools/build-wasm.sh Release
