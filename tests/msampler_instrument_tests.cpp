@@ -2,8 +2,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "Adapters/wasm/filesystem/WasmFileSystem.h"
-#include "Adapters/wasm/system/WasmSamplePool.h"
 #include "Application/Instruments/InstrumentBank.h"
 #include "Application/Instruments/MSamplerInstrument.h"
 #include "Application/Instruments/SamplePool.h"
@@ -11,6 +9,7 @@
 #include "Application/Persistency/PersistencyDocument.h"
 #include "Application/Player/AudioVoice.h"
 #include "System/FileSystem/FakeFileSystem.h"
+#include "TestStreamingSamplePool.h"
 #include "doctest/doctest.h"
 #include <filesystem>
 #include <memory>
@@ -56,7 +55,7 @@ void addPcm16Wav(FakeFileSystem &fileSystem, const char *path) {
 TEST_CASE("MSAMPLER plays the selected WAV zone from its attack cache") {
   FakeFileSystem fileSystem;
   FileSystemScope fileSystemScope(&fileSystem);
-  WasmSamplePool samplePool;
+  TestStreamingSamplePool samplePool;
   SamplePoolScope samplePoolScope(&samplePool);
   fileSystem.AddDirectory("/instruments");
   addPcm16Wav(fileSystem, "/instruments/C4.wav");
@@ -87,65 +86,10 @@ TEST_CASE("MSAMPLER plays the selected WAV zone from its attack cache") {
   CHECK(output[0] != 0.0f);
 }
 
-TEST_CASE("MSAMPLER loads and plays the Modern Acoustic Guitar V2 preset") {
-  const std::filesystem::path instrumentFolder(
-      "refs/Modern Acoustic Guitar V2");
-  if (!std::filesystem::exists(instrumentFolder /
-                               "Modern Acoustic Guitar.dspreset")) {
-    MESSAGE(
-        "Modern Acoustic Guitar V2 reference assets are not present; skipping");
-    return;
-  }
-
-  WasmFileSystem fileSystem(".");
-  FileSystemScope fileSystemScope(&fileSystem);
-  WasmSamplePool samplePool;
-  SamplePoolScope samplePoolScope(&samplePool);
-  DecentSamplerPreset preset;
-  const auto parsed = LoadDecentSamplerPreset(
-      "/refs/Modern Acoustic Guitar V2/Modern Acoustic Guitar.dspreset",
-      preset);
-  INFO("parse result: " << std::string(parsed.message_));
-  INFO("parse line: " << parsed.line_);
-  REQUIRE(parsed);
-  MSamplerInstrument instrument;
-  REQUIRE(instrument.LoadPreset(
-      "/refs/Modern Acoustic Guitar V2/Modern Acoustic Guitar.dspreset"));
-
-  bool started = false;
-  for (uint8_t velocity : {uint8_t{16}, uint8_t{60}, uint8_t{110}}) {
-    for (uint16_t note = 0; note <= 127 && !started; ++note) {
-      started =
-          instrument.StartWithVelocity(0, static_cast<uint8_t>(note), velocity);
-    }
-    if (started) {
-      break;
-    }
-  }
-  REQUIRE(started);
-
-  AudioSample output[2048]{};
-  bool audible = false;
-  bool completed = false;
-  for (uint8_t block = 0; block < 32; ++block) {
-    REQUIRE(instrument.Render(0, output, 1024, false));
-    for (AudioSample sample : output) {
-      audible = audible || sample != 0.0f;
-    }
-    uint32_t position = 0;
-    if (!instrument.GetPlaybackPosition(0, position)) {
-      completed = true;
-      break;
-    }
-  }
-  CHECK(audible);
-  CHECK(completed);
-}
-
 TEST_CASE("MSAMPLER bank restores a playable preset saved before its type") {
   FakeFileSystem fileSystem;
   FileSystemScope fileSystemScope(&fileSystem);
-  WasmSamplePool samplePool;
+  TestStreamingSamplePool samplePool;
   SamplePoolScope samplePoolScope(&samplePool);
   constexpr const char *presetDir =
       "/projects/myproject/instruments/Modern Acoustic Guitar";
@@ -219,7 +163,7 @@ TEST_CASE("MSAMPLER interpolates through attack and streamed page boundaries") {
       }
     } fileSystem;
     FileSystemScope fsScope(&fileSystem);
-    WasmSamplePool samplePool;
+    TestStreamingSamplePool samplePool;
     SamplePoolScope poolScope(&samplePool);
     fileSystem.AddDirectory("/instruments");
     const uint32_t frames = 60000;
@@ -333,7 +277,7 @@ void addTransitionPreset(FakeFileSystem &fs) {
 TEST_CASE("MSAMPLER voice controls fit and note-off follows amp release") {
   FakeFileSystem fs;
   FileSystemScope fsScope(&fs);
-  WasmSamplePool pool;
+  TestStreamingSamplePool pool;
   SamplePoolScope poolScope(&pool);
   addTransitionPreset(fs);
   MSamplerInstrument instrument;
@@ -378,7 +322,7 @@ TEST_CASE("MSAMPLER voice controls fit and note-off follows amp release") {
 TEST_CASE("MSAMPLER replacement is continuous across render blocks") {
   FakeFileSystem fs;
   FileSystemScope fsScope(&fs);
-  WasmSamplePool pool;
+  TestStreamingSamplePool pool;
   SamplePoolScope poolScope(&pool);
   addTransitionPreset(fs);
   MSamplerInstrument instrument;

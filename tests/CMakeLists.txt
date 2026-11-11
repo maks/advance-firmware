@@ -117,7 +117,7 @@ add_executable(picoTracker_tests
   ../sources/Application/Instruments/SampleSourceInstrument.cpp
   ../sources/Application/Instruments/SamplePool.cpp
   ../sources/Application/Instruments/SampleVariable.cpp
-  ../sources/Adapters/wasm/system/WasmSamplePool.cpp
+  stubs/TestStreamingSamplePool.cpp
   ../sources/Application/Instruments/SIDInstrument.cpp
   ../sources/Application/Instruments/SoundSource.cpp
   ../sources/Application/Instruments/picoSwarmInstrument.cpp
@@ -281,6 +281,9 @@ add_executable(picoTracker_instr_import_e2e_tests
   stubs/nanoprintf_impl.c
   stubs/System/FileSystem/FakeFileSystem.cpp
   ../sources/Application/Instruments/CommandList.cpp
+  ../sources/Application/Instruments/DecentSamplerPreset.cpp
+  ../sources/Application/Instruments/MSamplerInstrument.cpp
+  ../sources/Application/Instruments/SampleStreamService.cpp
   ../sources/Application/Instruments/Filters.cpp
   ../sources/Application/Instruments/I_Instrument.cpp
   ../sources/Application/Instruments/InstrumentBank.cpp

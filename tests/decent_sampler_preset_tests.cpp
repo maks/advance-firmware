@@ -2,11 +2,11 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "Adapters/wasm/system/WasmSamplePool.h"
 #include "Application/Instruments/DecentSamplerPreset.h"
 #include "Application/Instruments/WavFile.h"
 #include "Application/Instruments/WavHeader.h"
 #include "System/FileSystem/FakeFileSystem.h"
+#include "TestStreamingSamplePool.h"
 #include "doctest/doctest.h"
 
 namespace {
@@ -151,7 +151,7 @@ TEST_CASE("DecentSampler accepts stereo 24-bit AIFF and decodes PCM") {
   const auto *buffer = static_cast<const int16_t *>(file.GetSampleBuffer(-1));
   CHECK(buffer[0] == 16384);
   CHECK(buffer[1] == -16384);
-  WasmSamplePool pool;
+  TestStreamingSamplePool pool;
   SampleConversionErrorCode error{};
   REQUIRE(pool.ConvertSampleFile("/instruments/piano.aif",
                                  "/instruments/converted.wav", error));
