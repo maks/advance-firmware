@@ -97,6 +97,8 @@ void HAL_SD_MspInit(SD_HandleTypeDef *sdHandle) {
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
     /* SDMMC1 interrupt Init */
+    // Boot mounts SD before the scheduler starts. sd_diskio switches this
+    // to the FreeRTOS-safe priority before the first task-context transfer.
     HAL_NVIC_SetPriority(SDMMC1_IRQn, 3, 0);
     HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
     /* USER CODE BEGIN SDMMC1_MspInit 1 */

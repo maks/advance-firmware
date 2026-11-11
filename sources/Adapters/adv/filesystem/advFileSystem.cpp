@@ -14,7 +14,9 @@
 #include "Externals/etl/include/etl/pool.h"
 #include "Externals/etl/include/etl/string_utilities.h"
 #include "FileHandle.h"
+#include "FreeRTOS.h"
 #include "System/FileSystem/PathUtils.h"
+#include "task.h"
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -106,7 +108,9 @@ FileHandle advFileSystem::Open(const char *name, const char *mode) {
                  mode, static_cast<int>(res));
     return FileHandle();
   }
+  taskENTER_CRITICAL();
   wFile = filePool.create(cwd);
+  taskEXIT_CRITICAL();
   if (wFile == nullptr) {
     // Avoid leaking an open FATFS object when the pool is exhausted.
     f_close(&cwd);
@@ -431,4 +435,9 @@ bool PI_File::Sync() {
   return res == FR_OK;
 }
 
-void PI_File::Dispose() { filePool.destroy(this); }
+void PI_File::Dispose() {
+  Close();
+  taskENTER_CRITICAL();
+  filePool.destroy(this);
+  taskEXIT_CRITICAL();
+}

@@ -30,6 +30,7 @@ public:
 
   etl::expected<void, WAVEFILE_ERROR> Open(const char *);
   bool IsOpen() const;
+  uint32_t GetDataOffset() const { return dataPosition_; }
   virtual void *GetSampleBuffer(int note);
   void SetSampleBuffer(short *ptr);
   virtual int GetSize(int note);
@@ -51,6 +52,7 @@ protected:
   long readBlock(long position, long count);
 
 private:
+  bool aiff_ = false;
   FileHandle file_;    // File
   int readBufferSize_; // Read buffer size
   short *samples_;     // sample buffer size (16 bits)

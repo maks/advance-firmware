@@ -1334,9 +1334,6 @@ void Player::playCursorPosition(int channel) {
         // Check if note is in acceptable midi range
 
         if (note < 128) {
-          if (startMode == InstrumentStartMode::NewNote) {
-            mixer_.StopInstrument(channel);
-          }
           mixer_.StartInstrument(channel, instrument, note, startMode);
           int instrTable = instrument->GetTable();
 
@@ -1894,7 +1891,7 @@ void Player::PlayDirectNote(unsigned short instrumentIndex,
     hex2char(static_cast<uint8_t>(instrumentIndex),
              instrumentOnChannel_[playerChannel]);
     mixer_.StartInstrument(playerChannel, instrument, note,
-                           InstrumentStartMode::NewNote);
+                           InstrumentStartMode::NewNote, velocity);
     state.StartChannel(static_cast<uint8_t>(playerChannel));
   }
 }

@@ -54,20 +54,31 @@ void I_Instrument::SaveContent(tinyxml2::XMLPrinter *printer) {
 }
 
 void I_Instrument::RestoreContent(PersistencyDocument *doc) {
-  // First, check for TYPE attribute in the INSTRUMENT element
-  bool hasAttr = doc->NextAttribute();
-  while (hasAttr) {
-    if (!strcasecmp(doc->attrname_, "TYPE")) {
-      Trace::Log("I_INSTRUMENT", "Instrument type from XML: %s", doc->attrval_);
-      // TODO: We already know the instrument type so need to validate it
-      // matches the imported one here
+  // First, check for TYPE attribute in the INSTRUMENT element if attributes
+  // have not already been consumed by a derived instrument.
+  if (doc->ElemName() != nullptr &&
+      !strcasecmp(doc->ElemName(), "INSTRUMENT") &&
+      (doc->r_ == YXML_OK || doc->r_ == YXML_ELEMSTART ||
+       doc->r_ == YXML_ATTREND)) {
+    bool hasAttr = doc->NextAttribute();
+    while (hasAttr) {
+      if (!strcasecmp(doc->attrname_, "TYPE")) {
+        Trace::Log("I_INSTRUMENT", "Instrument type from XML: %s",
+                   doc->attrval_);
+        // TODO: We already know the instrument type so need to validate it
+        // matches the imported one here
+      }
+      hasAttr = doc->NextAttribute();
     }
-    hasAttr = doc->NextAttribute();
   }
 
   // Navigate to the first child of the INSTRUMENT element (which should be a
   // PARAM element)
-  bool subelem = doc->FirstChild();
+  bool subelem =
+      (doc->ElemName() != nullptr && !strcasecmp(doc->ElemName(), "PARAM") &&
+       doc->r_ == YXML_ELEMSTART)
+          ? true
+          : doc->FirstChild();
   int paramCount = 0;
 
   while (subelem) {

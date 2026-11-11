@@ -1,0 +1,10 @@
+Elapsed capture interval: 30.0 seconds
+BEFORE
+0x080a01aa in MSamplerInstrument::readFrame (this=this@entry=0x2403a404 <AppWindow::Create(GUICreateWindowParams&, char const*)::appWindowMemBuf+130956>, channel=channel@entry=2 '\002', frame=frame@entry=14220, left=@0x20003c60: 0, right=<optimized out>) at /home/maks/work/xiphonics/picoTracker_STM/sources/Application/Instruments/MSamplerInstrument.cpp:309
+309	  left = source[0] / kPcmScale;
+$1 = {version = 1, cpuHz = 479808000, audioUnderruns = 31, audio = {count = 16758, lastCycles = 4432471, maxCycles = 4765117, totalCycles = 17570766612}, streamRead = {count = 518, lastCycles = 18360549, maxCycles = 108081593, totalCycles = 10479256606}, uiDispatch = {count = 9140, lastCycles = 279802, maxCycles = 970406576, totalCycles = 6698811572}, uiGap = {count = 9139, lastCycles = 17349637, maxCycles = 970407165, totalCycles = 145783030567}}
+
+AFTER
+0x080a0168 in MSamplerInstrument::readFrame (this=this@entry=0x2403a404 <AppWindow::Create(GUICreateWindowParams&, char const*)::appWindowMemBuf+130956>, channel=channel@entry=5 '\005', frame=frame@entry=73, left=@0x20003c60: 0, right=<optimized out>) at /home/maks/work/xiphonics/picoTracker_STM/sources/Application/Instruments/MSamplerInstrument.cpp:302
+302	        page.generation_ == state.generation_ &&
+$1 = {version = 1, cpuHz = 479808000, audioUnderruns = 34, audio = {count = 18419, lastCycles = 4703957, maxCycles = 4765707, totalCycles = 24847667199}, streamRead = {count = 1067, lastCycles = 18238741, maxCycles = 108081593, totalCycles = 20871548926}, uiDispatch = {count = 9970, lastCycles = 341924, maxCycles = 970406576, totalCycles = 8111814644}, uiGap = {count = 9969, lastCycles = 15833503, maxCycles = 970407165, totalCycles = 160426685354}}

@@ -12,6 +12,11 @@
 
 #include "advAudioDriver.h"
 #include "Adapters/adv/usb/usb_audio_handoff.h"
+#include "System/Profiler/StreamingPerf.h"
+
+extern "C" {
+volatile StreamingPerfCounters streamingPerf = {.version = 2};
+}
 #include "Application/Mixer/MixerService.h"
 #include "Application/Model/Config.h"
 #include "Services/Midi/MidiService.h"
@@ -86,11 +91,16 @@ void advAudioDriver::IRQHandler() { instance_->OnChunkDone(); }
 
 PICOTRACKER_FAST_CODE("advance_audio_thread")
 void AudioThread(void *) {
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->LAR = 0xC5ACCE55;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+  streamingPerf.cpuHz = SystemCoreClock;
   MixerService *mixer = MixerService::GetInstance();
 
   while (true) {
     xSemaphoreTake(core1_audio, portMAX_DELAY);
 
+    StreamingPerfScope perf(streamingPerf.audio);
     // Prepare the next buffer (queues MIDI for this chunk)
     advAudioDriver::BufferNeeded();
 
@@ -249,6 +259,7 @@ void advAudioDriver::OnChunkDone() {
 
     int next = (poolPlayPosition_ + 1) % SOUND_BUFFER_COUNT;
     if (pool_[next].empty_) {
+      streamingPerf.audioUnderruns = streamingPerf.audioUnderruns + 1;
       HAL_SAI_Transmit_DMA(&hsai_BlockA1, (uint8_t *)miniBlank_,
                            MINI_BLANK_SIZE);
     } else {

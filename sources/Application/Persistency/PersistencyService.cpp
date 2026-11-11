@@ -12,6 +12,7 @@
  */
 
 #include "PersistencyService.h"
+#include "Application/Instruments/MSamplerInstrument.h"
 #include "Foundation/Services/ServiceRegistry.h"
 
 #include "Application/Utils/DrawUtils.h"
@@ -506,6 +507,12 @@ PersistencyResult PersistencyService::ExportInstrument(
 }
 
 InstrumentType PersistencyService::DetectInstrumentType(const char *name) {
+  if (name != nullptr) {
+    const char *extension = std::strrchr(name, '.');
+    if (extension != nullptr && !strcasecmp(extension, ".dspreset")) {
+      return IT_MSAMPLER;
+    }
+  }
   FileSystemPath::PathString instrumentPath;
   if (!resolveInstrumentPath(name, instrumentPath)) {
     Trace::Error("PERSISTENCYSERVICE: Could not resolve instrument path: %s",
@@ -560,6 +567,12 @@ PersistencyResult PersistencyService::ImportInstrument(I_Instrument *instrument,
     Trace::Error("PERSISTENCYSERVICE: Could not resolve instrument path: %s",
                  name ? name : "(null)");
     return PERSIST_ERROR;
+  }
+
+  if (instrument != nullptr && instrument->GetType() == IT_MSAMPLER) {
+    auto *msampler = static_cast<MSamplerInstrument *>(instrument);
+    return msampler->LoadPreset(instrumentPath.c_str()) ? PERSIST_LOADED
+                                                        : PERSIST_ERROR;
   }
 
   // Load the XML document

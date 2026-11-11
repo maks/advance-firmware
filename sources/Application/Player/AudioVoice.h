@@ -56,7 +56,7 @@ public:
   explicit AudioVoice(int channel);
 
   bool StartInstrument(I_Instrument *instrument, unsigned char note,
-                       InstrumentStartMode mode);
+                       InstrumentStartMode mode, uint8_t velocity = 127);
   bool ProcessCommand(TrackerCommand command, ushort value);
   void ReleaseInstrument();
   void StopInstrument();
@@ -282,6 +282,15 @@ private:
   void syncInsertEffects();
   bool syncInsertEffectSlot(int slot, Variable *type, Variable *position);
   void rebuildInsertChains();
+
+  // Smooth MSAMPLER note replacement after the shared envelope and FX, where
+  // continuity is measured in the samples actually sent to the mixer.
+  static constexpr uint32_t sampleTransitionFrames = 64;
+  AudioSample lastSampleLeft_ = 0.0f;
+  AudioSample lastSampleRight_ = 0.0f;
+  AudioSample transitionLeft_ = 0.0f;
+  AudioSample transitionRight_ = 0.0f;
+  uint32_t transitionFramesRemaining_ = 0;
 
   int channel_;
   I_Instrument *source_;

@@ -84,6 +84,7 @@ protected:
   void fillMidiParameters();
   void fillSIDParameters();
   void fillPicoSwarmParameters();
+  void fillMSamplerParameters();
   void fillNoneParameters();
   I_Instrument *getInstrument();
   void Update(Observable &o, I_ObservableData *d);

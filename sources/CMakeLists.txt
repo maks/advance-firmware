@@ -105,6 +105,11 @@ set(CMAKE_C_FLAGS_DEBUG "-Os -g3")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -g0 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "-Os -g3")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g0 -DNDEBUG")
+option(RELEASE_DEBUG_SYMBOLS "Keep symbols for optimized firmware profiling" OFF)
+if(RELEASE_DEBUG_SYMBOLS)
+  set(CMAKE_C_FLAGS_RELEASE "-O3 -g -DNDEBUG")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG")
+endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fno-rtti -fno-exceptions -fno-threadsafe-statics -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-use-cxa-atexit")
   

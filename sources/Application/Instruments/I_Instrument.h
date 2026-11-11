@@ -39,11 +39,12 @@ enum InstrumentType {
   IT_FM6,
   IT_STARLOOM,
   IT_PICO_SWARM,
+  IT_MSAMPLER,
   IT_LAST
 };
 static const char *InstrumentTypeNames[IT_LAST] = {
-    "NONE", "SAMPLE", "SAMPLESOURCE", "MIDI",
-    "SID",  "FM6",    "STARLOOM",     "PICOSWARM"};
+    "NONE", "SAMPLE",   "SAMPLESOURCE", "MIDI",    "SID",
+    "FM6",  "STARLOOM", "PICOSWARM",    "MSAMPLER"};
 
 inline bool InstrumentTypeUsesModernAudioVoice(InstrumentType type) {
   // This is the single source of truth for shared VoiceParameters and common
@@ -54,6 +55,7 @@ inline bool InstrumentTypeUsesModernAudioVoice(InstrumentType type) {
   case IT_FM6:
   case IT_STARLOOM:
   case IT_PICO_SWARM:
+  case IT_MSAMPLER:
     return true;
   default:
     return false;
@@ -82,6 +84,12 @@ public:
   virtual bool
   Start(int channel, unsigned char note,
         InstrumentStartMode mode = InstrumentStartMode::NewNote) = 0;
+  virtual bool
+  StartWithVelocity(int channel, unsigned char note, uint8_t velocity,
+                    InstrumentStartMode mode = InstrumentStartMode::NewNote) {
+    (void)velocity;
+    return Start(channel, note, mode);
+  }
   virtual void Release(int channel) { (void)channel; }
   virtual void Stop(int channel) = 0;
 

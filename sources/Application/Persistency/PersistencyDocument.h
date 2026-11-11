@@ -31,7 +31,7 @@ public:
   char *ElemName();
 
   char attrname_[64];
-  char attrval_[64];
+  char attrval_[PFILENAME_SIZE];
   char content_[129]; // 128 + \0
   yxml_ret_t r_;
 
