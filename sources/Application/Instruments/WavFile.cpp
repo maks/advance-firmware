@@ -308,6 +308,9 @@ int WavFile::GetSampleRate(int note) { return sampleRate_; };
 float WavFile::GetLengthInSec() { return (float)size_ / sampleRate_; };
 
 long WavFile::readBlock(long start, long size) {
+  if (!file_) {
+    return 0;
+  }
   if (size > readBufferSize_) {
     readBufferSize_ = size;
   }
@@ -317,6 +320,9 @@ long WavFile::readBlock(long start, long size) {
 };
 
 bool WavFile::GetBuffer(long start, long size) {
+  if (!file_) {
+    return false;
+  }
   samples_ = convertedBuffer_;
 
   const int32_t totalSamples = size * channelCount_;
@@ -364,6 +370,9 @@ uint32_t WavFile::GetDiskSize(int note) { return sampleBufferSize_; }
 
 // rewind to start of data (no header)
 bool WavFile::Rewind() {
+  if (!file_) {
+    return false;
+  }
   file_->Seek(dataPosition_, SEEK_SET);
   readCount_ = size_ * channelCount_ * bytePerSample_;
   return true;
@@ -372,7 +381,7 @@ bool WavFile::Rewind() {
 // incrementally read file, use rewind method to go to beginning
 bool WavFile::Read(void *buff, uint32_t btr, uint32_t *bytesRead) {
 
-  if (!buff || !bytesRead) {
+  if (!buff || !bytesRead || !file_) {
     return false;
   }
 
@@ -453,7 +462,7 @@ bool WavFile::Read(void *buff, uint32_t btr, uint32_t *bytesRead) {
 // so that we don't lose precision from higher bitrate samples
 bool WavFile::ReadFloat(float *buff, uint32_t maxSamples,
                         uint32_t *samplesRead) {
-  if (!buff || !samplesRead) {
+  if (!buff || !samplesRead || !file_) {
     return false;
   }
 

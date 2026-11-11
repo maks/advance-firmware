@@ -20,6 +20,7 @@
 #include "Externals/etl/include/etl/string.h"
 #include "Services/Audio/AudioModule.h"
 #include "System/FileSystem/FileSystem.h"
+#include <atomic>
 
 #define SINGLE_CYCLE_MAX_SAMPLE_SIZE 1024
 
@@ -36,7 +37,7 @@ public:
   bool IsPlaying();
 
 protected:
-  AudioFileStreamerMode mode_;
+  std::atomic<AudioFileStreamerMode> mode_{AFSM_STOPPED};
   etl::string<PFILENAME_SIZE - 1> name_;
   WavFile wav_;
   float position_;
@@ -57,6 +58,9 @@ protected:
 
 public:
   void SetProject(Project *project) { project_ = project; }
+
+private:
+  void stopPlayback();
 };
 
 #endif
