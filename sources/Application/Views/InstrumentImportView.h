@@ -35,7 +35,7 @@ public:
   // Dx7Patch browses SD-card .syx bank files. It is entered from the FM6
   // preset browser's [SDCard] entry, and ".." at the filesystem root returns
   // there.
-  enum class Mode : uint8_t { Instrument, Dx7Patch };
+  enum class Mode : uint8_t { Instrument, Dx7Patch, ProjectPreset };
 
   InstrumentImportView(GUIWindow &w, ViewData *viewData);
   ~InstrumentImportView();
@@ -79,6 +79,7 @@ private:
   bool extractingDslibrary_ = false;
   bool dslibraryPresetChooser_ = false;
   FileSystemPath::PathString dslibraryRoot_;
+  FileSystemPath::PathString projectPresetRoot_;
   FileSystemPath::PathString pendingCleanupStage_;
   FileSystemPath::PathString lastRecoveryScanPath_;
   unsigned short previewChannel_ = 0;

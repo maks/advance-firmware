@@ -31,6 +31,7 @@
 #include <cstring>
 #include <memory>
 #include <nanoprintf.h>
+#include <new>
 #include <strings.h>
 #include <tinyxml2.h>
 
@@ -46,9 +47,17 @@ constexpr size_t kImportBrowserPageCapacity = MAX_FILE_INDEX_SIZE - 1;
 #define DSLIBRARY_PAGE_STORAGE                                                 \
   __attribute__((section(".RAM_EXT"))) __attribute__((aligned(32)))
 #endif
-etl::vector<FileSystemEntry, kImportBrowserPageCapacity> dslibraryPageEntries
-    DSLIBRARY_PAGE_STORAGE;
+using DslibraryPageEntries =
+    etl::vector<FileSystemEntry, kImportBrowserPageCapacity>;
+alignas(DslibraryPageEntries) static unsigned char dslibraryPageStorage[sizeof(
+    DslibraryPageEntries)] DSLIBRARY_PAGE_STORAGE;
 #undef DSLIBRARY_PAGE_STORAGE
+
+DslibraryPageEntries &getDslibraryPageEntries() {
+  static DslibraryPageEntries *entries =
+      new (dslibraryPageStorage) DslibraryPageEntries();
+  return *entries;
+}
 
 template <size_t Capacity>
 etl::string<Capacity> makeBoundedInstrumentName(const char *name) {
@@ -560,12 +569,14 @@ void InstrumentImportView::ProcessButtonMask(unsigned short mask,
         return;
       }
 
-      const bool dx7File = mode_ != Mode::Instrument;
+      const bool dx7File = mode_ == Mode::Dx7Patch;
       FileSystemPath::PathString selectedPath;
       const char *rootDirectory =
           dx7File ? "/"
-                  : (dslibraryPresetChooser_ ? dslibraryRoot_.c_str()
-                                             : INSTRUMENTS_DIR);
+                  : (mode_ == Mode::ProjectPreset
+                         ? projectPresetRoot_.c_str()
+                         : (dslibraryPresetChooser_ ? dslibraryRoot_.c_str()
+                                                    : INSTRUMENTS_DIR));
       if (dslibraryPresetChooser_ && entry->name == ".." &&
           currentDir_ == dslibraryRoot_) {
         dslibraryPresetChooser_ = false;
@@ -586,14 +597,30 @@ void InstrumentImportView::ProcessButtonMask(unsigned short mask,
         return;
       }
 
-      if (entry->type == PFT_DIR) {
+      if (entry->type == PFT_DIR && mode_ == Mode::ProjectPreset &&
+          currentDir_ == projectPresetRoot_ && entry->name != "..") {
+        FileSystemPath::PathString presetName(entry->name.c_str());
+        presetName.append(".dspreset");
+        FileSystemPath::PathString presetPath;
+        if (presetName.is_truncated() ||
+            !FileSystemPath::JoinPath(selectedPath.c_str(), presetName.c_str(),
+                                      presetPath) ||
+            !fs->exists(presetPath.c_str())) {
+          MessageBox *mb =
+              MessageBox::Create(*this, "Instrument not found", MBBF_OK);
+          DoModal(mb);
+          return;
+        }
+        importInstrument(presetPath.c_str());
+      } else if (entry->type == PFT_DIR) {
         setCurrentFolder(fs, selectedPath.c_str());
         isDirty_ = true;
         topIndex_ = 0;
       } else if (dx7File) {
         enterSysexFile(selectedPath.c_str());
       } else {
-        if (!startDslibraryImport(selectedPath.c_str())) {
+        if (mode_ == Mode::ProjectPreset ||
+            !startDslibraryImport(selectedPath.c_str())) {
           importInstrument(selectedPath.c_str());
         }
       }
@@ -605,8 +632,10 @@ void InstrumentImportView::DrawView() {
   Clear();
 
   // Draw title
-  setTitle(etl::string<23>(mode_ != Mode::Instrument ? "Import DX7 Patch"
-                                                     : "Import Instrument"));
+  setTitle(etl::string<23>(mode_ == Mode::Dx7Patch ? "Import DX7 Patch"
+                           : mode_ == Mode::ProjectPreset
+                               ? "Project Instruments"
+                               : "Import Instrument"));
 
   GUITextProperties props;
 
@@ -757,7 +786,22 @@ void InstrumentImportView::OnFocus() {
   lastRecoveryScanPath_.clear();
   previewKeyHeld_ = false;
   auto fs = FileSystem::GetInstance();
-  setCurrentFolder(fs, mode_ != Mode::Instrument ? "/" : INSTRUMENTS_DIR);
+  if (mode_ == Mode::ProjectPreset) {
+    char projectName[MAX_PROJECT_NAME_LENGTH + 1]{};
+    viewData_->project_->GetProjectName(projectName);
+    FileSystemPath::PathString projectPath;
+    if (!FileSystemPath::JoinPath("/projects", projectName, projectPath) ||
+        !FileSystemPath::JoinPath(projectPath.c_str(), "instruments",
+                                  projectPresetRoot_)) {
+      return;
+    }
+    if (!fs->exists(projectPresetRoot_.c_str())) {
+      fs->makeDir(projectPresetRoot_.c_str(), true);
+    }
+    setCurrentFolder(fs, projectPresetRoot_.c_str());
+  } else {
+    setCurrentFolder(fs, mode_ == Mode::Dx7Patch ? "/" : INSTRUMENTS_DIR);
+  }
 }
 
 void InstrumentImportView::warpToNextInstrument(bool goUp, bool page) {
@@ -792,7 +836,9 @@ void InstrumentImportView::importInstrument(const char *name) {
   }
 
   const char *instrumentPath = name;
-  if (importedType == IT_MSAMPLER) {
+  const bool importingNewPreset =
+      importedType == IT_MSAMPLER && mode_ != Mode::ProjectPreset;
+  if (importingNewPreset) {
     char projectName[MAX_PROJECT_NAME_LENGTH + 1]{};
     viewData_->project_->GetProjectName(projectName);
     const char *error = nullptr;
@@ -840,7 +886,7 @@ void InstrumentImportView::importInstrument(const char *name) {
 
     if (bank->GetNextAndAssignID(importedType, toInstrID_) ==
         NO_MORE_INSTRUMENT) {
-      if (importedType == IT_MSAMPLER) {
+      if (importingNewPreset) {
         removeImportedPreset(importedDecentSamplerPath.c_str());
       }
       MessageBox *mb =
@@ -887,13 +933,13 @@ void InstrumentImportView::importInstrument(const char *name) {
     Trace::Log("INSTRUMENTIMPORT",
                "Updated viewData_ currentInstrumentID_ to: %d", toInstrID_);
 
-    MessageBox *mb = MessageBox::Create(*this, "Import successful", MBBF_OK);
+    MessageBox *mb = MessageBox::Create(*this, "Instrument Loaded", MBBF_OK);
     DoModal(mb,
             ModalViewCallback::create<InstrumentImportView,
                                       &InstrumentImportView::onImportSuccess>(
                 *this));
   } else {
-    if (importedType == IT_MSAMPLER) {
+    if (importingNewPreset) {
       removeImportedPreset(importedDecentSamplerPath.c_str());
     }
     MessageBox *mb = MessageBox::Create(*this, "Import failed", MBBF_OK);
@@ -1069,6 +1115,7 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
   if (fs == nullptr || name == nullptr) {
     return;
   }
+  auto &dslibraryPageEntries = getDslibraryPageEntries();
 
   const bool sameChooserDirectory = dslibraryPresetChooser_ &&
                                     FileSystemPath::IsAbsolutePath(name) &&
@@ -1076,11 +1123,14 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
   if (!sameChooserDirectory) {
     listingOffset_ = 0;
   }
-  const bool importingDx7Patch = mode_ != Mode::Instrument;
+  const bool importingDx7Patch = mode_ == Mode::Dx7Patch;
   const char *rootDirectory =
-      importingDx7Patch ? "/"
-                        : (dslibraryPresetChooser_ ? dslibraryRoot_.c_str()
-                                                   : INSTRUMENTS_DIR);
+      importingDx7Patch
+          ? "/"
+          : (mode_ == Mode::ProjectPreset
+                 ? projectPresetRoot_.c_str()
+                 : (dslibraryPresetChooser_ ? dslibraryRoot_.c_str()
+                                            : INSTRUMENTS_DIR));
   FileSystemPath::PathString nextDir;
   if (std::strcmp(name, BrowserPathUtils::kParentDirectoryName) == 0) {
     if (!BrowserPathUtils::ResolveParentDirectory(currentDir_.c_str(),
@@ -1099,9 +1149,12 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
   }
 
   fileEntries_.clear();
-  const char *filter = importingDx7Patch
-                           ? DX7_BANK_FILE_EXTENSION
-                           : (dslibraryPresetChooser_ ? ".dspreset" : nullptr);
+  const char *filter =
+      importingDx7Patch
+          ? DX7_BANK_FILE_EXTENSION
+          : ((dslibraryPresetChooser_ || mode_ == Mode::ProjectPreset)
+                 ? ".dspreset"
+                 : nullptr);
   bool listed = false;
   if (dslibraryPresetChooser_) {
     dslibraryPageEntries.clear();
@@ -1125,7 +1178,7 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
     showDirectoryListTruncatedDialog(*this);
   }
 
-  if (dslibraryPresetChooser_) {
+  if (dslibraryPresetChooser_ || mode_ == Mode::ProjectPreset) {
     for (auto entry = fileEntries_.begin(); entry != fileEntries_.end();) {
       if (entry->type != PFT_FILE) {
         ++entry;

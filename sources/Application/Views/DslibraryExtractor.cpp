@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstring>
 #include <limits>
+#include <new>
 #include <strings.h>
 #if defined(ADV)
 #include "FreeRTOS.h"
@@ -33,8 +34,14 @@ constexpr size_t kMaxDepth = 16;
 constexpr char kIncompleteMarker[] = ".dslibrary-incomplete";
 constexpr char kMarkerContents[] = "picoTracker dslibrary staging v1";
 std::atomic<bool> extractionActive{false};
-etl::vector<FileSystemEntry, MAX_FILE_INDEX_SIZE> cleanupEntries
-    DSLIBRARY_EXTERNAL;
+using CleanupEntries = etl::vector<FileSystemEntry, MAX_FILE_INDEX_SIZE>;
+alignas(CleanupEntries) unsigned char cleanupEntriesStorage[sizeof(
+    CleanupEntries)] DSLIBRARY_EXTERNAL;
+
+CleanupEntries &getCleanupEntries() {
+  static CleanupEntries *entries = new (cleanupEntriesStorage) CleanupEntries();
+  return *entries;
+}
 char cleanupPathStack[kMaxDepth + 1][PFILENAME_SIZE] DSLIBRARY_EXTERNAL;
 uint8_t archiveWorkspace[896U * 1024U] DSLIBRARY_EXTERNAL;
 size_t archiveWorkspaceUsed = 0;
@@ -263,6 +270,7 @@ bool EnsureParentDirs(FileSystem *fs, const char *root, const char *relative) {
 }
 
 bool DeleteTree(FileSystem *fs, const char *path) {
+  auto &cleanupEntries = getCleanupEntries();
   size_t depth = 0;
   std::strncpy(cleanupPathStack[0], path, PFILENAME_SIZE - 1);
   cleanupPathStack[0][PFILENAME_SIZE - 1] = '\0';

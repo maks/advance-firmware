@@ -564,10 +564,10 @@ void InstrumentView::fillMSamplerParameters() {
   GUIPoint position = GetAnchor();
   position._y += 2;
 
-  staticField_.emplace_back(position, instrument->IsInitialized()
-                                          ? "Preset loaded: Import to replace"
-                                          : "Import a DecentSampler .dspreset");
-  fieldList_.insert(fieldList_.end(), &staticField_.back());
+  sampleActionField_.emplace_back("Project Instruments",
+                                  FourCC::ActionShowFM6Presets, position);
+  sampleActionField_.back().AddObserver(*this);
+  fieldList_.insert(fieldList_.end(), &sampleActionField_.back());
 
   position._y += 2;
   Variable *level =
@@ -2031,6 +2031,10 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
   case FourCC::ActionShowFM6Presets: {
     stopInstrumentPreview();
     ViewType vt = VT_FM6_PRESETS;
+    if (getInstrument()->GetType() == IT_MSAMPLER) {
+      InstrumentImportView::SetMode(InstrumentImportView::Mode::ProjectPreset);
+      vt = VT_INSTRUMENT_IMPORT;
+    }
     ViewEvent ve(VET_SWITCH_VIEW, &vt);
     SetChanged();
     NotifyObservers(&ve);
