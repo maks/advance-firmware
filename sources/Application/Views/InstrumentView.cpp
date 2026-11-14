@@ -30,6 +30,7 @@
 #include "Application/Player/PlayButtonBehavior.h"
 #include "Application/Views/ImportView.h"
 #include "Application/Views/InstrumentImportView.h"
+#include "Application/Views/InstrumentTransferProgress.h"
 #include "Application/Views/SampleEditorView.h"
 #include "Application/Views/VoiceScreenUtils.h"
 #include "BaseClasses/UIBigHexVarField.h"
@@ -2204,10 +2205,21 @@ void InstrumentView::handleInstrumentExport() {
                 *this));
   } else {
     // Export the instrument using the name field
+    if (instrument->GetType() == IT_MSAMPLER) {
+      InstrumentTransferProgress::Begin(*this, "Exporting instrument");
+    }
     PersistencyResult result =
         PersistencyService::GetInstance()->ExportInstrument(instrument, name);
+    InstrumentTransferProgress::Finish();
 
-    if (result == PERSIST_EXISTS) {
+    if (result == PERSIST_EXISTS && instrument->GetType() == IT_MSAMPLER) {
+      MessageBox *mb =
+          MessageBox::Create(*this, "Instrument folder exists", MBBF_OK);
+      DoModal(mb,
+              ModalViewCallback::create<InstrumentView,
+                                        &InstrumentView::onSimpleModalDismiss>(
+                  *this));
+    } else if (result == PERSIST_EXISTS) {
       // File already exists, ask user if they want to override it
       etl::string<sizeof("Overwrite existing file: ") - 1> confirmMsg =
           "Overwrite existing file?";

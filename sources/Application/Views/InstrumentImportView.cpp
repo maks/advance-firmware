@@ -25,6 +25,7 @@
 #include "DslibraryExtractor.h"
 #include "Externals/etl/include/etl/string.h"
 #include "Externals/etl/include/etl/to_string.h"
+#include "InstrumentTransferProgress.h"
 #include "ModalDialogs/MessageBox.h"
 #include "System/FileSystem/I_File.h"
 #include "System/FileSystem/PathUtils.h"
@@ -292,6 +293,29 @@ bool buildImportedDecentSampler(const char *sourcePath, const char *projectName,
     return false;
   }
 
+  // Project exports use numbered, already converted 44.1 kHz WAV files.
+  bool convertedProjectPreset = true;
+  for (uint16_t i = 0; i < importPreset.zoneCount_; ++i) {
+    uint16_t fileIndex = i;
+    for (uint16_t previous = 0; previous < i; ++previous) {
+      if (std::strcmp(importPreset.zones_[i].path_,
+                      importPreset.zones_[previous].path_) == 0) {
+        fileIndex = previous;
+        break;
+      }
+    }
+    char expectedName[20];
+    npf_snprintf(expectedName, sizeof(expectedName), "sample%03u.wav",
+                 fileIndex);
+    FileSystemPath::PathString leaf;
+    if (importPreset.zones_[i].sampleRate_ != 44100 ||
+        !FileSystemPath::BaseName(importPreset.zones_[i].path_, leaf) ||
+        leaf != expectedName) {
+      convertedProjectPreset = false;
+      break;
+    }
+  }
+
   SamplePool *pool = SamplePool::GetInstance();
   for (uint16_t i = 0; i < importPreset.zoneCount_; ++i) {
     bool alreadyConverted = false;
@@ -314,10 +338,18 @@ bool buildImportedDecentSampler(const char *sourcePath, const char *projectName,
     } else if (!FileSystemPath::IsAbsolutePath(importPreset.zones_[i].path_) ||
                std::strlen(importPreset.zones_[i].path_) >= PFILENAME_SIZE) {
       conversionError = SampleConversionErrorCode::InvalidSourcePath;
-    } else if (!pool->ConvertSampleFile(importPreset.zones_[i].path_,
+    } else if (convertedProjectPreset &&
+               !fs->CopyFile(importPreset.zones_[i].path_,
+                             outputSamplePath.c_str())) {
+      conversionError = SampleConversionErrorCode::InvalidOutputPath;
+    } else if (!convertedProjectPreset &&
+               !pool->ConvertSampleFile(importPreset.zones_[i].path_,
                                         outputSamplePath.c_str(),
                                         conversionError)) {
       // The converter sets the specific failure code.
+    }
+    if (conversionError == SampleConversionErrorCode::None) {
+      InstrumentTransferProgress::Update(i + 1, importPreset.zoneCount_);
     }
     if (conversionError != SampleConversionErrorCode::None) {
       error = nullptr;
@@ -686,26 +718,7 @@ void InstrumentImportView::DrawView() {
     }
     y++;
   }
-  if (extractingDslibrary_) {
-    DslibraryExtractor::Progress progress{};
-    char stage[24]{};
-    char filename[PFILENAME_SIZE]{};
-    DslibraryExtractor::GetAsyncProgress(progress, stage, sizeof(stage),
-                                         filename, sizeof(filename));
-    SetColor(CD_ACCENT);
-    DrawRegionString(TEXT_REGION_BODY, 1, LIST_PAGE_SIZE + 1,
-                     progress.stage == nullptr ? "Inspecting archive"
-                                               : progress.stage,
-                     props);
-    DrawRegionString(TEXT_REGION_BODY, 1, LIST_PAGE_SIZE + 2, filename, props);
-    char progressText[40]{};
-    npf_snprintf(progressText, sizeof(progressText), "%llu / %llu bytes",
-                 static_cast<unsigned long long>(progress.extractedBytes),
-                 static_cast<unsigned long long>(progress.totalBytes));
-    DrawRegionString(TEXT_REGION_BODY, 1, LIST_PAGE_SIZE + 3, progressText,
-                     props);
-  } else if (dslibraryPresetChooser_ &&
-             listingTotal_ > kImportBrowserPageCapacity) {
+  if (dslibraryPresetChooser_ && listingTotal_ > kImportBrowserPageCapacity) {
     char pageText[40]{};
     const size_t page = listingOffset_ / kImportBrowserPageCapacity + 1;
     const size_t pages = (listingTotal_ + kImportBrowserPageCapacity - 1) /
@@ -733,6 +746,7 @@ void InstrumentImportView::updateDslibraryImport() {
   DslibraryExtractor::Result result;
   if (DslibraryExtractor::TakeAsyncResult(result)) {
     extractingDslibrary_ = false;
+    InstrumentTransferProgress::Finish();
     if (result == DslibraryExtractor::Result::Success) {
       char presetPath[PFILENAME_SIZE]{};
       const uint32_t presets =
@@ -775,7 +789,17 @@ void InstrumentImportView::updateDslibraryImport() {
     }
     isDirty_ = true;
   } else {
-    isDirty_ = true;
+    DslibraryExtractor::Progress progress{};
+    char stage[24]{};
+    char filename[PFILENAME_SIZE]{};
+    DslibraryExtractor::GetAsyncProgress(progress, stage, sizeof(stage),
+                                         filename, sizeof(filename));
+    const uint32_t percent =
+        progress.totalBytes
+            ? static_cast<uint32_t>((progress.extractedBytes * 100ULL) /
+                                    progress.totalBytes)
+            : 0;
+    InstrumentTransferProgress::Update(percent, 100);
   }
 }
 
@@ -843,9 +867,11 @@ void InstrumentImportView::importInstrument(const char *name) {
     viewData_->project_->GetProjectName(projectName);
     const char *error = nullptr;
     SampleConversionErrorCode conversionError = SampleConversionErrorCode::None;
-    if (!buildImportedDecentSampler(name, projectName,
-                                    importedDecentSamplerPath, error,
-                                    conversionError)) {
+    InstrumentTransferProgress::Begin(*this, "Importing instrument");
+    const bool imported = buildImportedDecentSampler(
+        name, projectName, importedDecentSamplerPath, error, conversionError);
+    InstrumentTransferProgress::Finish();
+    if (!imported) {
       char errorMessage[32];
       if (conversionError != SampleConversionErrorCode::None) {
         npf_snprintf(errorMessage, sizeof(errorMessage),
@@ -987,6 +1013,7 @@ bool InstrumentImportView::startDslibraryImport(const char *archivePath) {
   }
   dslibraryRoot_ = destination;
   extractingDslibrary_ = true;
+  InstrumentTransferProgress::Begin(*this, "Extracting library", true);
   isDirty_ = true;
   return true;
 }
