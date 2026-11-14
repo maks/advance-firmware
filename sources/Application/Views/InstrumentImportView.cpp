@@ -22,6 +22,7 @@
 #include "Application/Views/BaseClasses/BrowserEntrySort.h"
 #include "Application/Views/BaseClasses/BrowserPaging.h"
 #include "Application/Views/BaseClasses/BrowserPathUtils.h"
+#include "DslibraryExtractor.h"
 #include "Externals/etl/include/etl/string.h"
 #include "Externals/etl/include/etl/to_string.h"
 #include "ModalDialogs/MessageBox.h"
@@ -38,6 +39,16 @@
 #define LIST_PAGE_SIZE (SCREEN_HEIGHT - 4)
 
 namespace {
+constexpr size_t kImportBrowserPageCapacity = MAX_FILE_INDEX_SIZE - 1;
+#if defined(HOST_TEST)
+#define DSLIBRARY_PAGE_STORAGE
+#else
+#define DSLIBRARY_PAGE_STORAGE                                                 \
+  __attribute__((section(".RAM_EXT"))) __attribute__((aligned(32)))
+#endif
+etl::vector<FileSystemEntry, kImportBrowserPageCapacity> dslibraryPageEntries
+    DSLIBRARY_PAGE_STORAGE;
+#undef DSLIBRARY_PAGE_STORAGE
 
 template <size_t Capacity>
 etl::string<Capacity> makeBoundedInstrumentName(const char *name) {
@@ -172,6 +183,44 @@ bool buildImportedDecentSampler(const char *sourcePath, const char *projectName,
     return false;
   }
 
+  auto *fs = FileSystem::GetInstance();
+  uint64_t requiredBytes = 1024ULL * 1024ULL;
+  for (uint16_t index = 0; index < importPreset.zoneCount_; ++index) {
+    bool alreadyCounted = false;
+    for (uint16_t previous = 0; previous < index; ++previous) {
+      if (std::strcmp(importPreset.zones_[index].path_,
+                      importPreset.zones_[previous].path_) == 0) {
+        alreadyCounted = true;
+        break;
+      }
+    }
+    if (alreadyCounted) {
+      continue;
+    }
+    const auto &zone = importPreset.zones_[index];
+    const uint64_t rate = zone.sampleRate_ == 0 ? 44100U : zone.sampleRate_;
+    const uint64_t outputFrames =
+        (static_cast<uint64_t>(zone.frameCount_) * 44100U + rate - 1U) / rate;
+    const uint64_t outputBytes =
+        outputFrames * zone.channelCount_ * 2ULL + 44ULL;
+    if (outputFrames > (UINT64_MAX - requiredBytes) /
+                           (static_cast<uint64_t>(zone.channelCount_) * 2ULL) ||
+        outputBytes > UINT64_MAX - requiredBytes) {
+      error = "Imported sample data is too large";
+      return false;
+    }
+    requiredBytes += outputBytes;
+  }
+  uint64_t freeBytes = 0;
+  if (!fs->GetFreeSpaceBytes("/projects", freeBytes)) {
+    error = "Could not check SD free space";
+    return false;
+  }
+  if (freeBytes < requiredBytes) {
+    error = "Not enough SD space for imported samples";
+    return false;
+  }
+
   FileSystemPath::PathString projectPath, instrumentsPath, baseName;
   if (!FileSystemPath::JoinPath("/projects", projectName, projectPath) ||
       !FileSystemPath::JoinPath(projectPath.c_str(), "instruments",
@@ -180,7 +229,6 @@ bool buildImportedDecentSampler(const char *sourcePath, const char *projectName,
     error = "Project path is too long";
     return false;
   }
-  auto *fs = FileSystem::GetInstance();
   if (!fs->makeDir(instrumentsPath.c_str(), true)) {
     error = "Could not create project instruments folder";
     return false;
@@ -423,9 +471,13 @@ void InstrumentImportView::SetMode(Mode mode) { mode_ = mode; }
 void InstrumentImportView::Reset() {
   topIndex_ = 0;
   currentIndex_ = 0;
+  listingOffset_ = 0;
+  listingTotal_ = 0;
   selected_ = 0;
   toInstrID_ = 0;
   browsingSysex_ = false;
+  dslibraryPresetChooser_ = false;
+  lastRecoveryScanPath_.clear();
   previewKeyHeld_ = false;
   currentDir_.clear();
   fileEntries_.clear();
@@ -433,6 +485,12 @@ void InstrumentImportView::Reset() {
 
 void InstrumentImportView::ProcessButtonMask(unsigned short mask,
                                              bool pressed) {
+  if (extractingDslibrary_) {
+    if (pressed && (mask & EPBM_LEFT) && (mask & EPBM_NAV)) {
+      DslibraryExtractor::Cancel();
+    }
+    return;
+  }
   if (!pressed) {
     if (previewKeyHeld_ && !(mask & EPBM_PLAY)) {
       stopPatchPreview();
@@ -462,6 +520,16 @@ void InstrumentImportView::ProcessButtonMask(unsigned short mask,
     }
 
     // handle moving up and down the file list
+  } else if (dslibraryPresetChooser_ && (mask & EPBM_EDIT) &&
+             (mask & (EPBM_UP | EPBM_DOWN))) {
+    if (mask & EPBM_DOWN) {
+      if (listingOffset_ + kImportBrowserPageCapacity < listingTotal_) {
+        listingOffset_ += kImportBrowserPageCapacity;
+      }
+    } else if (listingOffset_ >= kImportBrowserPageCapacity) {
+      listingOffset_ -= kImportBrowserPageCapacity;
+    }
+    setCurrentFolder(FileSystem::GetInstance(), currentDir_.c_str());
   } else if (mask & EPBM_UP) {
     const bool page = (mask & EPBM_EDIT) != 0;
     warpToNextInstrument(true, page);
@@ -494,7 +562,16 @@ void InstrumentImportView::ProcessButtonMask(unsigned short mask,
 
       const bool dx7File = mode_ != Mode::Instrument;
       FileSystemPath::PathString selectedPath;
-      const char *rootDirectory = dx7File ? "/" : INSTRUMENTS_DIR;
+      const char *rootDirectory =
+          dx7File ? "/"
+                  : (dslibraryPresetChooser_ ? dslibraryRoot_.c_str()
+                                             : INSTRUMENTS_DIR);
+      if (dslibraryPresetChooser_ && entry->name == ".." &&
+          currentDir_ == dslibraryRoot_) {
+        dslibraryPresetChooser_ = false;
+        setCurrentFolder(fs, INSTRUMENTS_DIR);
+        return;
+      }
       if (!resolveEntryPath(currentDir_, *entry, rootDirectory, selectedPath)) {
         // In Dx7Patch mode (entered from the FM6 preset browser) ".." at the
         // filesystem root has no parent to resolve; it returns to the preset
@@ -516,7 +593,9 @@ void InstrumentImportView::ProcessButtonMask(unsigned short mask,
       } else if (dx7File) {
         enterSysexFile(selectedPath.c_str());
       } else {
-        importInstrument(selectedPath.c_str());
+        if (!startDslibraryImport(selectedPath.c_str())) {
+          importInstrument(selectedPath.c_str());
+        }
       }
     }
   }
@@ -578,13 +657,104 @@ void InstrumentImportView::DrawView() {
     }
     y++;
   }
+  if (extractingDslibrary_) {
+    DslibraryExtractor::Progress progress{};
+    char stage[24]{};
+    char filename[PFILENAME_SIZE]{};
+    DslibraryExtractor::GetAsyncProgress(progress, stage, sizeof(stage),
+                                         filename, sizeof(filename));
+    SetColor(CD_ACCENT);
+    DrawRegionString(TEXT_REGION_BODY, 1, LIST_PAGE_SIZE + 1,
+                     progress.stage == nullptr ? "Inspecting archive"
+                                               : progress.stage,
+                     props);
+    DrawRegionString(TEXT_REGION_BODY, 1, LIST_PAGE_SIZE + 2, filename, props);
+    char progressText[40]{};
+    npf_snprintf(progressText, sizeof(progressText), "%llu / %llu bytes",
+                 static_cast<unsigned long long>(progress.extractedBytes),
+                 static_cast<unsigned long long>(progress.totalBytes));
+    DrawRegionString(TEXT_REGION_BODY, 1, LIST_PAGE_SIZE + 3, progressText,
+                     props);
+  } else if (dslibraryPresetChooser_ &&
+             listingTotal_ > kImportBrowserPageCapacity) {
+    char pageText[40]{};
+    const size_t page = listingOffset_ / kImportBrowserPageCapacity + 1;
+    const size_t pages = (listingTotal_ + kImportBrowserPageCapacity - 1) /
+                         kImportBrowserPageCapacity;
+    npf_snprintf(pageText, sizeof(pageText), "Page %u/%u EDIT+UP/DOWN",
+                 static_cast<uint32_t>(page), static_cast<uint32_t>(pages));
+    SetColor(CD_ACCENT);
+    DrawRegionString(TEXT_REGION_BODY, 1, LIST_PAGE_SIZE + 1, pageText, props);
+  }
 };
 
-void InstrumentImportView::OnPlayerUpdate(PlayerEventType, unsigned int tick) {}
+void InstrumentImportView::OnPlayerUpdate(PlayerEventType, unsigned int) {
+  updateDslibraryImport();
+}
+
+void InstrumentImportView::AnimationUpdate() {
+  ScreenView::AnimationUpdate();
+  updateDslibraryImport();
+}
+
+void InstrumentImportView::updateDslibraryImport() {
+  if (!extractingDslibrary_) {
+    return;
+  }
+  DslibraryExtractor::Result result;
+  if (DslibraryExtractor::TakeAsyncResult(result)) {
+    extractingDslibrary_ = false;
+    if (result == DslibraryExtractor::Result::Success) {
+      char presetPath[PFILENAME_SIZE]{};
+      const uint32_t presets =
+          DslibraryExtractor::GetPresetSummary(presetPath, sizeof(presetPath));
+      if (presets == 0) {
+        MessageBox *mb = MessageBox::Create(*this, "No presets found", MBBF_OK);
+        DoModal(mb);
+      } else if (presets == 1) {
+        FileSystemPath::PathString fullPresetPath;
+        if (FileSystemPath::JoinPath(dslibraryRoot_.c_str(), presetPath,
+                                     fullPresetPath)) {
+          importInstrument(fullPresetPath.c_str());
+        } else {
+          MessageBox *mb =
+              MessageBox::Create(*this, "Preset path too long", MBBF_OK);
+          DoModal(mb);
+        }
+      } else {
+        dslibraryPresetChooser_ = true;
+        setCurrentFolder(FileSystem::GetInstance(), dslibraryRoot_.c_str());
+        MessageBox *mb = MessageBox::Create(
+            *this, "Select a preset from the library", MBBF_OK);
+        DoModal(mb);
+      }
+    } else if (result != DslibraryExtractor::Result::Cancelled) {
+      const char *message = "Library extraction failed";
+      if (result == DslibraryExtractor::Result::ExistingDestination) {
+        message = "Destination already exists";
+      } else if (result == DslibraryExtractor::Result::InsufficientSpace) {
+        message = "Not enough SD space";
+      } else if (result == DslibraryExtractor::Result::UnsupportedArchive) {
+        message = "Unsupported ZIP archive";
+      } else if (result == DslibraryExtractor::Result::InvalidPath) {
+        message = "Invalid archive path";
+      } else if (result == DslibraryExtractor::Result::OutOfMemory) {
+        message = "Library workspace exhausted";
+      }
+      MessageBox *mb = MessageBox::Create(*this, message, MBBF_OK);
+      DoModal(mb);
+    }
+    isDirty_ = true;
+  } else {
+    isDirty_ = true;
+  }
+}
 
 void InstrumentImportView::OnFocus() {
   toInstrID_ = viewData_->currentInstrumentID_;
   browsingSysex_ = false;
+  dslibraryPresetChooser_ = false;
+  lastRecoveryScanPath_.clear();
   previewKeyHeld_ = false;
   auto fs = FileSystem::GetInstance();
   setCurrentFolder(fs, mode_ != Mode::Instrument ? "/" : INSTRUMENTS_DIR);
@@ -733,6 +903,48 @@ void InstrumentImportView::importInstrument(const char *name) {
   isDirty_ = true;
 }
 
+bool InstrumentImportView::startDslibraryImport(const char *archivePath) {
+  const size_t pathLength = std::strlen(archivePath);
+  constexpr char extension[] = ".dslibrary";
+  constexpr size_t extensionLength = sizeof(extension) - 1;
+  if (pathLength <= extensionLength ||
+      strcasecmp(archivePath + pathLength - extensionLength, extension) != 0) {
+    return false;
+  }
+  if (Player::GetInstance()->IsRunning()) {
+    MessageBox *mb = MessageBox::Create(
+        *this, "cannot import dslibrary while sequencer running", MBBF_OK);
+    DoModal(mb);
+    return true;
+  }
+  Player::GetInstance()->StopStreaming();
+  FileSystemPath::PathString destination;
+  destination.assign(archivePath, pathLength - extensionLength);
+  if (destination.is_truncated()) {
+    MessageBox *mb =
+        MessageBox::Create(*this, "Destination path too long", MBBF_OK);
+    DoModal(mb);
+    return true;
+  }
+  auto *fs = FileSystem::GetInstance();
+  if (fs->exists(destination.c_str())) {
+    MessageBox *mb =
+        MessageBox::Create(*this, "Destination already exists", MBBF_OK);
+    DoModal(mb);
+    return true;
+  }
+  if (!DslibraryExtractor::StartAsync(archivePath, destination.c_str())) {
+    MessageBox *mb = MessageBox::Create(
+        *this, "Could not start library extraction", MBBF_OK);
+    DoModal(mb);
+    return true;
+  }
+  dslibraryRoot_ = destination;
+  extractingDslibrary_ = true;
+  isDirty_ = true;
+  return true;
+}
+
 void InstrumentImportView::onImportSuccess(View &, ModalView &dialog) {
   if (dialog.GetReturnCode() != MBL_OK) {
     return;
@@ -858,8 +1070,17 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
     return;
   }
 
+  const bool sameChooserDirectory = dslibraryPresetChooser_ &&
+                                    FileSystemPath::IsAbsolutePath(name) &&
+                                    std::strcmp(name, currentDir_.c_str()) == 0;
+  if (!sameChooserDirectory) {
+    listingOffset_ = 0;
+  }
   const bool importingDx7Patch = mode_ != Mode::Instrument;
-  const char *rootDirectory = importingDx7Patch ? "/" : INSTRUMENTS_DIR;
+  const char *rootDirectory =
+      importingDx7Patch ? "/"
+                        : (dslibraryPresetChooser_ ? dslibraryRoot_.c_str()
+                                                   : INSTRUMENTS_DIR);
   FileSystemPath::PathString nextDir;
   if (std::strcmp(name, BrowserPathUtils::kParentDirectoryName) == 0) {
     if (!BrowserPathUtils::ResolveParentDirectory(currentDir_.c_str(),
@@ -878,9 +1099,22 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
   }
 
   fileEntries_.clear();
-  const bool listed = fs->ListDirectory(
-      nextDir.c_str(), &fileEntries_,
-      importingDx7Patch ? DX7_BANK_FILE_EXTENSION : nullptr, false);
+  const char *filter = importingDx7Patch
+                           ? DX7_BANK_FILE_EXTENSION
+                           : (dslibraryPresetChooser_ ? ".dspreset" : nullptr);
+  bool listed = false;
+  if (dslibraryPresetChooser_) {
+    dslibraryPageEntries.clear();
+    listed =
+        fs->ListDirectoryPage(nextDir.c_str(), &dslibraryPageEntries, filter,
+                              false, false, listingOffset_, listingTotal_);
+    for (const auto &entry : dslibraryPageEntries) {
+      fileEntries_.push_back(entry);
+    }
+  } else {
+    listingTotal_ = 0;
+    listed = fs->ListDirectory(nextDir.c_str(), &fileEntries_, filter, false);
+  }
   const bool truncated = isDirectoryListTruncated(fs);
   if (!listed && !truncated) {
     Trace::Error("INSTRUMENTIMPORT: Failed to list %s", nextDir.c_str());
@@ -889,6 +1123,64 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
   if (truncated) {
     Trace::Error("INSTRUMENTIMPORT: Truncated listing for %s", nextDir.c_str());
     showDirectoryListTruncatedDialog(*this);
+  }
+
+  if (dslibraryPresetChooser_) {
+    for (auto entry = fileEntries_.begin(); entry != fileEntries_.end();) {
+      if (entry->type != PFT_FILE) {
+        ++entry;
+        continue;
+      }
+      const char *name = entry->name.c_str();
+      const size_t length = entry->name.size();
+      constexpr char presetExt[] = ".dspreset";
+      constexpr size_t presetExtLength = sizeof(presetExt) - 1;
+      if (length <= presetExtLength ||
+          strcasecmp(name + length - presetExtLength, presetExt) != 0) {
+        entry = fileEntries_.erase(entry);
+      } else {
+        ++entry;
+      }
+    }
+  }
+
+  if (!dslibraryPresetChooser_ && lastRecoveryScanPath_ != nextDir) {
+    lastRecoveryScanPath_ = nextDir;
+    size_t recoveryOffset = 0;
+    size_t recoveryTotal = 0;
+    bool recoveryPromptShown = false;
+    do {
+      dslibraryPageEntries.clear();
+      if (!fs->ListDirectoryPage(nextDir.c_str(), &dslibraryPageEntries,
+                                 nullptr, true, false, recoveryOffset,
+                                 recoveryTotal)) {
+        break;
+      }
+      for (const auto &entry : dslibraryPageEntries) {
+        FileSystemPath::PathString stagePath, markerPath;
+        if (!FileSystemPath::JoinPath(nextDir.c_str(), entry.name.c_str(),
+                                      stagePath) ||
+            !FileSystemPath::JoinPath(stagePath.c_str(),
+                                      ".dslibrary-incomplete", markerPath) ||
+            !fs->exists(markerPath.c_str())) {
+          continue;
+        }
+        pendingCleanupStage_ = stagePath;
+        MessageBox *mb =
+            MessageBox::Create(*this, "Incomplete library extraction found",
+                               "Clean it up?", MBBF_YES | MBBF_NO);
+        DoModal(mb,
+                ModalViewCallback::create<
+                    InstrumentImportView,
+                    &InstrumentImportView::onCleanupIncompleteStage>(*this));
+        recoveryPromptShown = true;
+        break;
+      }
+      if (recoveryPromptShown || dslibraryPageEntries.empty()) {
+        break;
+      }
+      recoveryOffset += dslibraryPageEntries.size();
+    } while (recoveryOffset < recoveryTotal);
   }
 
   SortBrowserEntries(fileEntries_);
@@ -914,4 +1206,15 @@ void InstrumentImportView::setCurrentFolder(FileSystem *fs, const char *name) {
   }
   Trace::Debug("loaded %d files from %s", fileEntries_.size(),
                currentDir_.c_str());
+}
+
+void InstrumentImportView::onCleanupIncompleteStage(View &, ModalView &dialog) {
+  const int selection = dialog.GetReturnCode();
+  if (selection == MBL_YES && !DslibraryExtractor::CleanupIncompleteStage(
+                                  pendingCleanupStage_.c_str())) {
+    MessageBox *mb = MessageBox::Create(
+        *this, "Could not clean incomplete extraction", MBBF_OK);
+    DoModal(mb);
+  }
+  pendingCleanupStage_.clear();
 }

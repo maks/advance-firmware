@@ -58,6 +58,20 @@ public:
                              etl::ivector<FileSystemEntry> *entries,
                              const char *filter, bool directoriesOnly,
                              bool includeHidden = false) = 0;
+  virtual bool ListDirectoryPage(const char *absoluteDir,
+                                 etl::ivector<FileSystemEntry> *entries,
+                                 const char *filter, bool directoriesOnly,
+                                 bool includeHidden, size_t offset,
+                                 size_t &totalMatches) {
+    if (offset != 0) {
+      totalMatches = 0;
+      return false;
+    }
+    const bool result = ListDirectory(absoluteDir, entries, filter,
+                                      directoriesOnly, includeHidden);
+    totalMatches = entries == nullptr ? 0 : entries->size();
+    return result;
+  }
   virtual bool DeleteFile(const char *name) = 0;
   virtual bool DeleteDir(const char *name) = 0;
   // Optional batching hook for filesystem implementations that cache listings.
@@ -67,6 +81,19 @@ public:
   virtual bool makeDir(const char *path, bool pFlag = false) = 0;
   virtual bool CopyFile(const char *srcFilename, const char *destFilename) = 0;
   virtual bool MoveFile(const char *srcFilename, const char *destFilename) = 0;
+  // Returns available bytes on the volume containing path. False means the
+  // filesystem cannot establish a reliable capacity estimate.
+  virtual bool GetFreeSpaceBytes(const char *path, uint64_t &bytes) {
+    (void)path;
+    bytes = 0;
+    return false;
+  }
+  // Rename a directory without replacing an existing destination.
+  virtual bool RenameDir(const char *srcPath, const char *destPath) {
+    (void)srcPath;
+    (void)destPath;
+    return false;
+  }
   virtual bool isExFat() = 0;
   DirectoryListStatus GetLastListDirectoryStatus() const {
     return lastListDirectoryStatus_;

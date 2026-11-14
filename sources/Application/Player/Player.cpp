@@ -12,6 +12,7 @@
  */
 
 #include "Player.h"
+#include "Application/Views/DslibraryExtractor.h"
 #include "Application/Effects/DelayOutputEffect.h"
 #include "Application/Instruments/I_Instrument.h"
 #include "Application/Instruments/SampleInstrument.h"
@@ -159,6 +160,9 @@ bool Player::IsChannelMuted(int channel) {
 
 void Player::Start(PlayMode mode, bool forceSongMode, MixerServiceMode msmMode,
                    bool stopAtEnd, SongLoopRange songLoopRange) {
+  if (DslibraryExtractor::IsActive()) {
+    return;
+  }
 
   mixer_.Lock();
   directNoteAuditionState_.Clear();

@@ -42,6 +42,7 @@ add_executable(picoTracker_tests
   midi_instrument_tests.cpp
   sample_source_instrument_tests.cpp
   decent_sampler_preset_tests.cpp
+  dslibrary_import_tests.cpp
   msampler_instrument_tests.cpp
   sid_instrument_tests.cpp
   pico_swarm_instrument_tests.cpp
@@ -105,6 +106,8 @@ add_executable(picoTracker_tests
   stubs/System/FileSystem/FakeFileSystem.cpp
   ../sources/Application/Instruments/CommandList.cpp
   ../sources/Application/Instruments/DecentSamplerPreset.cpp
+  ../sources/Application/Views/DslibraryExtractor.cpp
+  ../sources/Externals/miniz/miniz.c
   ../sources/Application/Instruments/Filters.cpp
   ../sources/Application/Instruments/InstrumentBank.cpp
   ../sources/Application/Instruments/InstrumentNameVariable.cpp
@@ -180,6 +183,7 @@ target_include_directories(picoTracker_tests PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/../sources
   ${CMAKE_CURRENT_LIST_DIR}/../sources/Application/Model
   ${CMAKE_CURRENT_LIST_DIR}/../sources/Application/Persistency
+  ${CMAKE_CURRENT_LIST_DIR}/../sources/Externals/miniz
   ${CMAKE_CURRENT_LIST_DIR}/../sources/Foundation
   ${CMAKE_CURRENT_LIST_DIR}/../sources/Foundation/Variables
 )

@@ -129,11 +129,29 @@ bool WasmFileSystem::ListDirectory(const char *absoluteDir,
                                    etl::ivector<FileSystemEntry> *entries,
                                    const char *filter, bool directoriesOnly,
                                    bool includeHidden) {
+  size_t totalMatches = 0;
+  const bool listed =
+      ListDirectoryPage(absoluteDir, entries, filter, directoriesOnly,
+                        includeHidden, 0, totalMatches);
+  if (listed && entries != nullptr && totalMatches > entries->size()) {
+    SetLastListDirectoryStatus(DirectoryListStatus::Truncated);
+    return false;
+  }
+  return listed;
+}
+
+bool WasmFileSystem::ListDirectoryPage(const char *absoluteDir,
+                                       etl::ivector<FileSystemEntry> *entries,
+                                       const char *filter, bool directoriesOnly,
+                                       bool includeHidden, size_t offset,
+                                       size_t &totalMatches) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
+  totalMatches = 0;
   if (entries == nullptr) {
     SetLastListDirectoryStatus(DirectoryListStatus::Error);
     return false;
   }
+  entries->clear();
 
   std::string resolved;
   if (!Resolve(absoluteDir, resolved)) {
@@ -182,11 +200,13 @@ bool WasmFileSystem::ListDirectory(const char *absoluteDir,
     if (!isDir && !matchesFilter(entryName, normalizedFilter)) {
       continue;
     }
+    const size_t matchIndex = totalMatches++;
+    if (matchIndex < offset) {
+      continue;
+    }
 
     if (entries->full()) {
-      SetLastListDirectoryStatus(DirectoryListStatus::Truncated);
-      success = false;
-      break;
+      continue;
     }
 
     FileSystemEntry fe;
@@ -296,6 +316,42 @@ bool WasmFileSystem::MoveFile(const char *srcFilename,
   fs::path parent = fs::path(destResolved).parent_path();
   if (!parent.empty()) {
     fs::create_directories(parent, ec);
+  }
+  fs::rename(srcResolved, destResolved, ec);
+  if (!ec) {
+    WasmStorage_NotifyMutation();
+    return true;
+  }
+  return false;
+}
+
+bool WasmFileSystem::GetFreeSpaceBytes(const char *path, uint64_t &bytes) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  std::string resolved;
+  if (!Resolve(path, resolved)) {
+    bytes = 0;
+    return false;
+  }
+  std::error_code ec;
+  const auto info = fs::space(resolved, ec);
+  if (ec) {
+    bytes = 0;
+    return false;
+  }
+  bytes = info.available;
+  return true;
+}
+
+bool WasmFileSystem::RenameDir(const char *srcPath, const char *destPath) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  std::string srcResolved, destResolved;
+  if (!Resolve(srcPath, srcResolved) || !Resolve(destPath, destResolved)) {
+    return false;
+  }
+  std::error_code ec;
+  if (!fs::is_directory(srcResolved, ec) || ec ||
+      fs::exists(destResolved, ec) || ec) {
+    return false;
   }
   fs::rename(srcResolved, destResolved, ec);
   if (!ec) {

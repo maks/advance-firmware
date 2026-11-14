@@ -6,6 +6,7 @@
 #include "Adapters/wasm/tracing/WasmProfiler.h"
 #include "WasmStorageBridge.h"
 
+#include <sys/types.h>
 #include <unistd.h>
 #include <utility>
 
@@ -44,6 +45,21 @@ void WasmFile::Seek(long offset, int whence) {
 }
 
 long WasmFile::Tell() { return file_ == nullptr ? -1L : std::ftell(file_); }
+
+bool WasmFile::Seek64(uint64_t offset, int whence) {
+  if (file_ == nullptr || offset > static_cast<uint64_t>(INT64_MAX)) {
+    return false;
+  }
+  return fseeko(file_, static_cast<off_t>(offset), whence) == 0;
+}
+
+uint64_t WasmFile::Tell64() {
+  if (file_ == nullptr) {
+    return UINT64_MAX;
+  }
+  const off_t position = ftello(file_);
+  return position < 0 ? UINT64_MAX : static_cast<uint64_t>(position);
+}
 
 int WasmFile::Error() { return file_ == nullptr ? -1 : std::ferror(file_); }
 

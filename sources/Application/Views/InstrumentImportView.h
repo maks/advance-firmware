@@ -44,6 +44,7 @@ public:
   virtual void ProcessButtonMask(unsigned short mask, bool pressed);
   virtual void DrawView();
   virtual void OnPlayerUpdate(PlayerEventType, unsigned int tick = 0);
+  virtual void AnimationUpdate() override;
   virtual void OnFocus();
 
 protected:
@@ -58,18 +59,28 @@ protected:
   void stopPatchPreview();
 
 private:
+  bool startDslibraryImport(const char *archivePath);
+  void updateDslibraryImport();
+  void onCleanupIncompleteStage(View &view, ModalView &dialog);
   void onImportSuccess(View &view, ModalView &dialog);
 
   static Mode mode_;
 
   size_t topIndex_ = 0;
   size_t currentIndex_ = 0;
+  size_t listingOffset_ = 0;
+  size_t listingTotal_ = 0;
   short selected_ = 0;
   int toInstrID_ = 0;
   // When set, fileEntries_ lists the 32 patches of the staged sysex bank
   // instead of the filesystem.
   bool browsingSysex_ = false;
   bool previewKeyHeld_ = false;
+  bool extractingDslibrary_ = false;
+  bool dslibraryPresetChooser_ = false;
+  FileSystemPath::PathString dslibraryRoot_;
+  FileSystemPath::PathString pendingCleanupStage_;
+  FileSystemPath::PathString lastRecoveryScanPath_;
   unsigned short previewChannel_ = 0;
   FileSystemPath::PathString currentDir_;
   BrowserFileEntries &fileEntries_;

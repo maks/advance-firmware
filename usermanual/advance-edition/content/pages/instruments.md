@@ -42,6 +42,33 @@ Once you've created an instrument, you can save it for use in other projects:
 2. Select "Export" on the instrument screen
 3. To import a previously saved instrument, select "Import"
 
+#### Importing Decent Sampler libraries
+
+The Instrument Import browser accepts Decent Sampler `.dspreset` presets and
+`.dslibrary` archives. A library is extracted beside the archive into a folder
+with the same name (without `.dslibrary`). The extracted files are kept as
+reusable source material, even if you cancel preset selection or the preset
+cannot be imported. To use a library later, open its extracted folder in the
+Instrument Import browser and select a `.dspreset` file.
+When a library contains several presets, the browser lists `.dspreset` files
+and their folders. Enter folders to browse the archive hierarchy; use
+<span class="minikeys">EDIT</span>+<span class="minikeys">UP</span>/<span class="minikeys">DOWN</span>
+to move between listing pages when a folder is large.
+
+Stop sequencer playback before importing a library. Importing while it is
+running is refused; playback is not stopped automatically. While extraction is
+in progress, the browser shows its stage, filename, and byte progress. Use
+<span class="minikeys">NAV</span>+<span class="minikeys">LEFT</span> to cancel.
+The original archive is left unchanged.
+
+The importer requires at least 256 MiB of free SD space and supports libraries
+with up to 4,096 entries and 8 GiB of extracted file data. ZIP64, encrypted,
+split-volume, and unsupported compression archives are not accepted. Extracted
+presets are still checked by the normal Decent Sampler importer; successful
+extraction does not guarantee that the preset or its audio files are supported.
+If an interrupted extraction is found when you enter its folder, you can clean
+up its marked staging directory and retry the archive.
+
 ## Auditioning Instruments
 
 Advance can audition audio instruments directly from the Instrument and Voice screens. MIDI instruments are excluded. While an instrument audition is active, the top of the screen shows the play icon followed by `A`.
