@@ -20,13 +20,12 @@ constexpr size_t MaxAttributeValue = 191;
 struct ElementFrame {
   char name_[32]{};
   bool enabled_ = true;
-  uint8_t sequenceMode_ = 0; // 0 always, 1 round-robin, 2 unsupported
+  uint8_t sequenceMode_ = 0; // 0 always, 1 round-robin, 2 random
   uint16_t sequencePosition_ = 1;
   DecentSamplerZone zone_{};
   bool hasZone_ = false;
   bool hasRootNote_ = false;
   bool hasPath_ = false;
-  bool unsupported_ = false;
 };
 
 struct ParserWorkspace {
@@ -306,7 +305,6 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(const char *presetPath,
       if (depth > 0) {
         frame.enabled_ = frames[depth - 1].enabled_;
         frame.sequenceMode_ = frames[depth - 1].sequenceMode_;
-        frame.unsupported_ = frames[depth - 1].unsupported_;
       }
       const size_t nameLength = std::strlen(parser.elem);
       if (nameLength >= sizeof(frame.name_)) {
@@ -409,17 +407,6 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(const char *presetPath,
         }
         std::memcpy(frame.zone_.path_, value, std::strlen(value) + 1);
         frame.hasPath_ = true;
-      } else if (std::strcmp(attribute, "loopEnabled") == 0 ||
-                 std::strcmp(attribute, "trigger") == 0 ||
-                 std::strcmp(attribute, "sampleMode") == 0) {
-        if ((std::strcmp(attribute, "loopEnabled") == 0 &&
-             std::strcmp(value, "true") == 0) ||
-            (std::strcmp(attribute, "trigger") == 0 &&
-             std::strcmp(value, "attack") != 0) ||
-            (std::strcmp(attribute, "sampleMode") == 0 &&
-             std::strcmp(value, "normal") != 0)) {
-          frame.unsupported_ = true;
-        }
       } else if (frame.hasZone_ && std::strcmp(attribute, "seqPosition") == 0) {
         uint32_t sequencePosition = 0;
         if (!parseUnsigned(value, UINT16_MAX, sequencePosition) ||
@@ -431,11 +418,6 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(const char *presetPath,
       } else if (frame.hasZone_ && std::strcmp(attribute, "seqLength") == 0) {
         // Sequence length is metadata when the first sample in a round robin
         // group is selected for this initial playback implementation.
-      } else if (frame.hasZone_ &&
-                 (std::strcmp(attribute, "releaseTrigger") == 0 ||
-                  std::strcmp(attribute, "trigger") == 0 ||
-                  std::strcmp(attribute, "loopCrossfade") == 0)) {
-        frame.unsupported_ = true;
       } else if (frame.hasZone_ && (std::strcmp(attribute, "start") == 0 ||
                                     std::strcmp(attribute, "end") == 0)) {
         uint32_t framePosition = 0;
@@ -464,12 +446,6 @@ DecentSamplerPresetResult LoadDecentSamplerPreset(const char *presetPath,
         if (frame.sequenceMode_ == 1 && frame.sequencePosition_ != 1) {
           --depth;
           continue;
-        }
-        if (frame.sequenceMode_ == 2 || frame.unsupported_) {
-          return fail(DecentSamplerPresetError::UnsupportedFeature,
-                      "sample uses loops, triggers, or sequencing outside the "
-                      "supported subset",
-                      parser.line);
         }
         if (!frame.hasPath_ || !frame.hasRootNote_ ||
             frame.zone_.lowNote_ > frame.zone_.highNote_ ||

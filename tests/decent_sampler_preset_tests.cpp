@@ -81,6 +81,25 @@ TEST_CASE("DecentSampler keeps preset order for overlapping mapping zones") {
   CHECK(preset.zones_[1].lowVelocity_ == 64);
 }
 
+TEST_CASE("DecentSampler imports samples with unsupported playback features") {
+  FakeFileSystem fileSystem;
+  FileSystemScope fileSystemScope(&fileSystem);
+  fileSystem.AddDirectory("/instruments");
+  addPcm16Wav(fileSystem, "/instruments/C4.wav");
+  fileSystem.AddFile(
+      "/instruments/Features.dspreset",
+      "<DecentSampler><groups><group loopEnabled=\"true\" "
+      "seqMode=\"random\"><sample path=\"C4.wav\" rootNote=\"60\" "
+      "trigger=\"release\" sampleMode=\"loop\" loopCrossfade=\"10\" "
+      "releaseTrigger=\"true\"/></group></groups></DecentSampler>");
+
+  DecentSamplerPreset preset;
+  REQUIRE(LoadDecentSamplerPreset("/instruments/Features.dspreset", preset));
+  REQUIRE(preset.zoneCount_ == 1);
+  CHECK(preset.zones_[0].rootNote_ == 60);
+  CHECK(std::strcmp(preset.zones_[0].path_, "/instruments/C4.wav") == 0);
+}
+
 TEST_CASE("DecentSampler rejects malformed XML before opening its samples") {
   FakeFileSystem fileSystem;
   FileSystemScope fileSystemScope(&fileSystem);

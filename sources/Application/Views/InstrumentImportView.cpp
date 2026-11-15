@@ -189,7 +189,27 @@ bool buildImportedDecentSampler(const char *sourcePath, const char *projectName,
   error = "Could not read DecentSampler preset";
   auto result = LoadDecentSamplerPreset(sourcePath, importPreset);
   if (!result) {
-    error = result.message_;
+    Trace::Error("DS import: %s (line %u)", result.message_, result.line_);
+    switch (result.error_) {
+    case DecentSamplerPresetError::MalformedXml:
+      error = "Invalid preset XML";
+      break;
+    case DecentSamplerPresetError::InvalidMapping:
+      error = "Invalid sample mapping";
+      break;
+    case DecentSamplerPresetError::MissingSample:
+      error = "Sample file missing";
+      break;
+    case DecentSamplerPresetError::TooManyZones:
+      error = "Too many sample zones";
+      break;
+    case DecentSamplerPresetError::UnsupportedWav:
+      error = "Unsupported sample format";
+      break;
+    default:
+      error = "Could not read preset";
+      break;
+    }
     return false;
   }
 
@@ -872,16 +892,19 @@ void InstrumentImportView::importInstrument(const char *name) {
         name, projectName, importedDecentSamplerPath, error, conversionError);
     InstrumentTransferProgress::Finish();
     if (!imported) {
-      char errorMessage[32];
+      char errorMessage[29];
       if (conversionError != SampleConversionErrorCode::None) {
         npf_snprintf(errorMessage, sizeof(errorMessage),
                      "Sample import failed [%u]",
                      static_cast<uint32_t>(conversionError));
         error = errorMessage;
+      } else {
+        npf_snprintf(errorMessage, sizeof(errorMessage), "%.28s",
+                     error == nullptr ? "Could not import preset" : error);
+        error = errorMessage;
       }
-      MessageBox *mb = MessageBox::Create(
-          *this, "DecentSampler import failed",
-          error == nullptr ? "Could not import preset" : error, MBBF_OK);
+      MessageBox *mb =
+          MessageBox::Create(*this, "DS import failed", error, MBBF_OK);
       DoModal(mb);
       return;
     }
