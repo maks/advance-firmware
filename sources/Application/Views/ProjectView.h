@@ -106,6 +106,7 @@ private:
   etl::string<MAX_PROJECT_NAME_LENGTH> oldProjName_;
 
   void DrawRenderSelectionSummary(const GUIRect &selectionRect);
+  void OnProjectNameEntered(View &view, ModalView &dialog);
   bool CanExit();
 };
 #endif

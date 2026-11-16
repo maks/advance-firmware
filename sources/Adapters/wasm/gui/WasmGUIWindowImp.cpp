@@ -282,18 +282,20 @@ void WasmGUIWindowImp::DrawChar(const char c, const GUIPoint &pos,
                                 const GUITextProperties &p) {
   const uint8_t character = static_cast<uint8_t>(c);
   const uint8_t target = display_target();
+  const uint8_t fontId = target ? display_overlay_font() : TEXT_FONT_NORMAL;
+  const TextFontInfo *font = text_font(fontId);
+  if (!font)
+    return;
   if (target != 0) {
     if (pos._x < 0 || pos._x >= 32 || pos._y < 0 || pos._y >= 24)
-      return;
-    const TextFontInfo *font = text_font(TEXT_FONT_NORMAL);
-    if (!font)
       return;
     const uint16_t foreground =
         p.invert_ ? backgroundColor565_ : foregroundColor565_;
     const uint16_t background =
         p.invert_ ? foregroundColor565_ : backgroundColor565_;
-    RenderGlyph(*font, character, 8 + pos._x * font->width,
-                pos._y * font->height, foreground, background);
+    const int32_t x = display_overlay_origin_x() + pos._x * font->width;
+    const int32_t y = display_overlay_origin_y() + pos._y * font->height;
+    RenderGlyph(*font, character, x, y, foreground, background);
     return;
   }
 
@@ -303,7 +305,7 @@ void WasmGUIWindowImp::DrawChar(const char c, const GUIPoint &pos,
   const TextRegionInfo &region = layout->regions[p.region_];
   if (pos._x >= region.columns || pos._y >= region.rows)
     return;
-  const TextFontInfo *font = text_font(region.definition.font);
+  font = text_font(region.definition.font);
   if (!font)
     return;
 

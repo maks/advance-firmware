@@ -50,6 +50,19 @@ static uint32_t graphics_revision;
 // One ownership bit per cell, using the same bitmap helpers as dirty text.
 static uint8_t graphics_cells[(TEXT_REGION_CAPACITY + 7) / 8] TEXT_STATE_RAM;
 static DisplayOverlayObserver overlay_observer;
+static uint8_t active_overlay_font = TEXT_FONT_NORMAL;
+static int16_t active_overlay_origin_x = 8, active_overlay_origin_y = 0;
+void display_set_overlay_font(uint8_t font) {
+  if (font < TEXT_FONT_COUNT)
+    active_overlay_font = font;
+}
+uint8_t display_overlay_font(void) { return active_overlay_font; }
+void display_set_overlay_origin(int16_t x, int16_t y) {
+  active_overlay_origin_x = x;
+  active_overlay_origin_y = y;
+}
+int16_t display_overlay_origin_x(void) { return active_overlay_origin_x; }
+int16_t display_overlay_origin_y(void) { return active_overlay_origin_y; }
 
 void display_set_overlay_observer(DisplayOverlayObserver observer) {
   overlay_observer = observer;
@@ -379,10 +392,11 @@ static void paint_glyph(void *context, GraphicsRegion r, uint16_t *dest,
 void display_draw_overlay_char(uint8_t x, uint8_t y, char c, bool invert) {
   if (!active_target || x >= 32 || y >= 24 || (uint8_t)c < 32)
     return;
-  GraphicsRegion r = {8 + x * CHAR_WIDTH, y * CHAR_HEIGHT, CHAR_WIDTH,
-                      CHAR_HEIGHT};
-  const TextFontInfo *font = text_font(TEXT_FONT_NORMAL);
-  GlyphPaint g = {font->pixels + ((uint8_t)c - 32) * CHAR_WIDTH * CHAR_HEIGHT,
+  const TextFontInfo *font = text_font(active_overlay_font);
+  GraphicsRegion r = {active_overlay_origin_x + x * font->width,
+                      active_overlay_origin_y + y * font->height, font->width,
+                      font->height};
+  GlyphPaint g = {font->pixels + ((uint8_t)c - 32) * font->width * font->height,
                   r, palette[invert ? screen_fg_color : screen_bg_color],
                   palette[invert ? screen_bg_color : screen_fg_color]};
   route_text(active_target, r, paint_glyph, &g);

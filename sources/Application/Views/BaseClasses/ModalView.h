@@ -31,6 +31,7 @@ public:
 
 protected:
   void SetWindow(int width, int height);
+  void SetWindow(int width, int height, uint8_t font);
   virtual void ClearTextRect(int x, int y, int w, int h);
   virtual void DrawString(int x, int y, const char *txt,
                           const GUITextProperties &props);
