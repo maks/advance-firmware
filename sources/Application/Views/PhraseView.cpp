@@ -59,6 +59,8 @@ char instrumentTypeLetter(I_Instrument *instrument) {
     return 'L';
   case IT_PICO_SWARM:
     return 'W';
+  case IT_MSAMPLER:
+    return 'D';
   case IT_LAST:
     return '_';
   }

@@ -14,7 +14,9 @@
 #include "Externals/etl/include/etl/pool.h"
 #include "Externals/etl/include/etl/string_utilities.h"
 #include "FileHandle.h"
+#include "FreeRTOS.h"
 #include "System/FileSystem/PathUtils.h"
+#include "task.h"
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -106,7 +108,9 @@ FileHandle advFileSystem::Open(const char *name, const char *mode) {
                  mode, static_cast<int>(res));
     return FileHandle();
   }
+  taskENTER_CRITICAL();
   wFile = filePool.create(cwd);
+  taskEXIT_CRITICAL();
   if (wFile == nullptr) {
     // Avoid leaking an open FATFS object when the pool is exhausted.
     f_close(&cwd);
@@ -121,7 +125,24 @@ bool advFileSystem::ListDirectory(const char *absoluteDir,
                                   etl::ivector<FileSystemEntry> *entries,
                                   const char *filter, bool directoriesOnly,
                                   bool includeHidden) {
+  size_t totalMatches = 0;
+  const bool listed =
+      ListDirectoryPage(absoluteDir, entries, filter, directoriesOnly,
+                        includeHidden, 0, totalMatches);
+  if (listed && entries != nullptr && totalMatches > entries->size()) {
+    SetLastListDirectoryStatus(DirectoryListStatus::Truncated);
+    return false;
+  }
+  return listed;
+}
+
+bool advFileSystem::ListDirectoryPage(const char *absoluteDir,
+                                      etl::ivector<FileSystemEntry> *entries,
+                                      const char *filter, bool directoriesOnly,
+                                      bool includeHidden, size_t offset,
+                                      size_t &totalMatches) {
   SetLastListDirectoryStatus(DirectoryListStatus::Ok);
+  totalMatches = 0;
 
   if (entries == nullptr) {
     Trace::Error("FILESYSTEM: ListDirectory received null entries vector");
@@ -189,11 +210,12 @@ bool advFileSystem::ListDirectory(const char *absoluteDir,
     if (!isDir && !matchesFilter(entryName, normalizedFilter)) {
       continue;
     }
+    const size_t matchIndex = totalMatches++;
+    if (matchIndex < offset) {
+      continue;
+    }
     if (entries->full()) {
-      Trace::Error("FILESYSTEM: ListDirectory output buffer is full");
-      success = false;
-      SetLastListDirectoryStatus(DirectoryListStatus::Truncated);
-      break;
+      continue;
     }
 
     FileSystemEntry entry;
@@ -340,6 +362,33 @@ bool advFileSystem::MoveFile(const char *srcFilename,
   return f_rename(srcFilename, destFilename) == FR_OK;
 }
 
+bool advFileSystem::GetFreeSpaceBytes(const char *path, uint64_t &bytes) {
+  if (path == nullptr) {
+    bytes = 0;
+    return false;
+  }
+  DWORD freeClusters = 0;
+  FATFS *filesystem = nullptr;
+  if (f_getfree(path, &freeClusters, &filesystem) != FR_OK ||
+      filesystem == nullptr || filesystem->csize == 0) {
+    bytes = 0;
+    return false;
+  }
+  bytes = static_cast<uint64_t>(freeClusters) * filesystem->csize * 512ULL;
+  return true;
+}
+
+bool advFileSystem::RenameDir(const char *srcPath, const char *destPath) {
+  if (srcPath == nullptr || destPath == nullptr || exists(destPath)) {
+    return false;
+  }
+  FILINFO info;
+  if (f_stat(srcPath, &info) != FR_OK || (info.fattrib & AM_DIR) == 0) {
+    return false;
+  }
+  return f_rename(srcPath, destPath) == FR_OK;
+}
+
 PI_File::PI_File(FIL file) : file_(file), isOpen_(true) {}
 
 PI_File::~PI_File() { Close(); }
@@ -407,6 +456,23 @@ int PI_File::Write(const void *ptr, int size, int nmemb) {
 
 long PI_File::Tell() { return f_tell(&file_); }
 
+bool PI_File::Seek64(uint64_t offset, int whence) {
+  uint64_t target = offset;
+  if (whence == SEEK_CUR) {
+    target += f_tell(&file_);
+  } else if (whence == SEEK_END) {
+    target += f_size(&file_);
+  } else if (whence != SEEK_SET) {
+    return false;
+  }
+  if (target > UINT32_MAX) {
+    return false;
+  }
+  return f_lseek(&file_, static_cast<FSIZE_t>(target)) == FR_OK;
+}
+
+uint64_t PI_File::Tell64() { return f_tell(&file_); }
+
 int PI_File::Error() { return f_error(&file_); }
 
 bool PI_File::Close() {
@@ -431,4 +497,9 @@ bool PI_File::Sync() {
   return res == FR_OK;
 }
 
-void PI_File::Dispose() { filePool.destroy(this); }
+void PI_File::Dispose() {
+  Close();
+  taskENTER_CRITICAL();
+  filePool.destroy(this);
+  taskEXIT_CRITICAL();
+}

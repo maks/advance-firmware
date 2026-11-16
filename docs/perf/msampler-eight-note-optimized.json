@@ -1,0 +1,325 @@
+{
+  "before": {
+    "host_time": 367431.976231515,
+    "counters": {
+      "version": 2,
+      "cpuHz": 479808000,
+      "captureEpoch": 2,
+      "audioUnderruns": 13,
+      "pageMisses": 0,
+      "interpolationMisses": 0,
+      "queueFull": 0,
+      "queueHighWater": 16,
+      "streamErrors": 0,
+      "fileCacheHits": 91,
+      "sdReadTransfers": 2577,
+      "sdReadSectors": 13856,
+      "sdBounceTransfers": 2076,
+      "sdErrors": 0,
+      "sdTimeouts": 0,
+      "audio": {
+        "count": 3546,
+        "lastCycles": 2353313,
+        "maxCycles": 2598849,
+        "totalCycles": 3056083682,
+        "epoch": 1,
+        "windowMaxCycles": 2598849
+      },
+      "streamRead": {
+        "count": 121,
+        "lastCycles": 2948521,
+        "maxCycles": 34182525,
+        "totalCycles": 802061863,
+        "epoch": 1,
+        "windowMaxCycles": 6950005
+      },
+      "streamQueueWait": {
+        "count": 121,
+        "lastCycles": 71852189,
+        "maxCycles": 73217265,
+        "totalCycles": 4138930688,
+        "epoch": 1,
+        "windowMaxCycles": 73217265
+      },
+      "streamOpen": {
+        "count": 30,
+        "lastCycles": 1082655,
+        "maxCycles": 1085497,
+        "totalCycles": 29582091,
+        "epoch": 1,
+        "windowMaxCycles": 1082655
+      },
+      "streamSeek": {
+        "count": 65,
+        "lastCycles": 121701,
+        "maxCycles": 375417,
+        "totalCycles": 15745083,
+        "epoch": 1,
+        "windowMaxCycles": 375417
+      },
+      "streamDataRead": {
+        "count": 121,
+        "lastCycles": 2947115,
+        "maxCycles": 33165703,
+        "totalCycles": 756587319,
+        "epoch": 1,
+        "windowMaxCycles": 5813442
+      },
+      "sdWait": {
+        "count": 2585,
+        "lastCycles": 140626,
+        "maxCycles": 2646599,
+        "totalCycles": 628634820,
+        "epoch": 1,
+        "windowMaxCycles": 2646599
+      },
+      "uiDispatch": {
+        "count": 1963,
+        "lastCycles": 367644,
+        "maxCycles": 740189093,
+        "totalCycles": 1606466987,
+        "epoch": 1,
+        "windowMaxCycles": 4981827
+      },
+      "uiGap": {
+        "count": 1962,
+        "lastCycles": 14514628,
+        "maxCycles": 740189815,
+        "totalCycles": 31508993937,
+        "epoch": 1,
+        "windowMaxCycles": 17514656
+      },
+      "inputScanGap": {
+        "count": 6476,
+        "lastCycles": 4797838,
+        "maxCycles": 54585300,
+        "totalCycles": 31528182681,
+        "epoch": 1,
+        "windowMaxCycles": 7240154
+      },
+      "inputQueueWait": {
+        "count": 2,
+        "lastCycles": 6521,
+        "maxCycles": 6521,
+        "totalCycles": 12980,
+        "epoch": 1,
+        "windowMaxCycles": 6521
+      },
+      "inputDispatchLatency": {
+        "count": 2,
+        "lastCycles": 34507,
+        "maxCycles": 34507,
+        "totalCycles": 42464,
+        "epoch": 1,
+        "windowMaxCycles": 34507
+      }
+    }
+  },
+  "after": {
+    "host_time": 367462.149717138,
+    "counters": {
+      "version": 2,
+      "cpuHz": 479808000,
+      "captureEpoch": 2,
+      "audioUnderruns": 13,
+      "pageMisses": 0,
+      "interpolationMisses": 0,
+      "queueFull": 0,
+      "queueHighWater": 16,
+      "streamErrors": 0,
+      "fileCacheHits": 533,
+      "sdReadTransfers": 9443,
+      "sdReadSectors": 50130,
+      "sdBounceTransfers": 7794,
+      "sdErrors": 0,
+      "sdTimeouts": 0,
+      "audio": {
+        "count": 5207,
+        "lastCycles": 2426693,
+        "maxCycles": 2598849,
+        "totalCycles": 6953237683,
+        "epoch": 2,
+        "windowMaxCycles": 2471809
+      },
+      "streamRead": {
+        "count": 665,
+        "lastCycles": 2955599,
+        "maxCycles": 34182525,
+        "totalCycles": 3300569831,
+        "epoch": 2,
+        "windowMaxCycles": 7098925
+      },
+      "streamQueueWait": {
+        "count": 666,
+        "lastCycles": 2414648,
+        "maxCycles": 73885438,
+        "totalCycles": 24393007712,
+        "epoch": 2,
+        "windowMaxCycles": 73885438
+      },
+      "streamOpen": {
+        "count": 133,
+        "lastCycles": 994775,
+        "maxCycles": 1085497,
+        "totalCycles": 131773652,
+        "epoch": 2,
+        "windowMaxCycles": 1082351
+      },
+      "streamSeek": {
+        "count": 338,
+        "lastCycles": 255826,
+        "maxCycles": 375461,
+        "totalCycles": 88914549,
+        "epoch": 2,
+        "windowMaxCycles": 375461
+      },
+      "streamDataRead": {
+        "count": 665,
+        "lastCycles": 2954237,
+        "maxCycles": 33165703,
+        "totalCycles": 3075724636,
+        "epoch": 2,
+        "windowMaxCycles": 5882310
+      },
+      "sdWait": {
+        "count": 9450,
+        "lastCycles": 257394,
+        "maxCycles": 2935403,
+        "totalCycles": 2444159309,
+        "epoch": 2,
+        "windowMaxCycles": 2935403
+      },
+      "uiDispatch": {
+        "count": 2950,
+        "lastCycles": 343617,
+        "maxCycles": 740189093,
+        "totalCycles": 2241223067,
+        "epoch": 2,
+        "windowMaxCycles": 5564969
+      },
+      "uiGap": {
+        "count": 2950,
+        "lastCycles": 15834038,
+        "maxCycles": 740189815,
+        "totalCycles": 45949295604,
+        "epoch": 2,
+        "windowMaxCycles": 18177499
+      },
+      "inputScanGap": {
+        "count": 9303,
+        "lastCycles": 5131084,
+        "maxCycles": 54585300,
+        "totalCycles": 45965938582,
+        "epoch": 2,
+        "windowMaxCycles": 7887508
+      },
+      "inputQueueWait": {
+        "count": 78,
+        "lastCycles": 6861,
+        "maxCycles": 395100,
+        "totalCycles": 1565154,
+        "epoch": 2,
+        "windowMaxCycles": 395100
+      },
+      "inputDispatchLatency": {
+        "count": 78,
+        "lastCycles": 8721,
+        "maxCycles": 396505,
+        "totalCycles": 1730048,
+        "epoch": 2,
+        "windowMaxCycles": 396505
+      }
+    }
+  },
+  "summary": {
+    "elapsed_seconds": 30.173485622974113,
+    "metrics": {
+      "audio": {
+        "count": 1661,
+        "mean_ms": 4.890017918917517,
+        "window_max_ms": 5.151662748432706,
+        "elapsed_percent": 26.918732110743136
+      },
+      "streamRead": {
+        "count": 544,
+        "mean_ms": 9.572257089110153,
+        "window_max_ms": 14.795345221421902,
+        "elapsed_percent": 17.257892977770776
+      },
+      "streamQueueWait": {
+        "count": 545,
+        "mean_ms": 77.45482376436814,
+        "window_max_ms": 153.98959167000135,
+        "elapsed_percent": 139.90057190953013
+      },
+      "streamOpen": {
+        "count": 103,
+        "mean_ms": 2.0678085352263884,
+        "window_max_ms": 2.255800236761371,
+        "elapsed_percent": 0.7058656788599578
+      },
+      "streamSeek": {
+        "count": 273,
+        "mean_ms": 0.5585984851816184,
+        "window_max_ms": 0.7825234260370815,
+        "elapsed_percent": 0.5054019557437879
+      },
+      "streamDataRead": {
+        "count": 544,
+        "mean_ms": 8.88505416336265,
+        "window_max_ms": 12.259716386554622,
+        "elapsed_percent": 16.018929749332884
+      },
+      "sdWait": {
+        "count": 6865,
+        "mean_ms": 0.5511808052305651,
+        "window_max_ms": 6.117870064692544,
+        "elapsed_percent": 12.540335164416003
+      },
+      "uiDispatch": {
+        "count": 987,
+        "mean_ms": 1.3403623860891876,
+        "window_max_ms": 11.598324746565293,
+        "elapsed_percent": 4.384437686783997
+      },
+      "uiGap": {
+        "count": 988,
+        "mean_ms": 30.46153867037706,
+        "window_max_ms": 37.884943560757634,
+        "elapsed_percent": 99.74320031298411
+      },
+      "inputScanGap": {
+        "count": 2827,
+        "mean_ms": 10.644037638785028,
+        "window_max_ms": 16.43888388688809,
+        "elapsed_percent": 99.72561599556863
+      },
+      "inputQueueWait": {
+        "count": 76,
+        "mean_ms": 0.042565655648224204,
+        "window_max_ms": 0.823454381752701,
+        "elapsed_percent": 0.010721299718856199
+      },
+      "inputDispatchLatency": {
+        "count": 76,
+        "mean_ms": 0.04627903793096186,
+        "window_max_ms": 0.8263826363878884,
+        "elapsed_percent": 0.011656614441902918
+      }
+    },
+    "counter_deltas": {
+      "audioUnderruns": 0,
+      "pageMisses": 0,
+      "interpolationMisses": 0,
+      "queueFull": 0,
+      "streamErrors": 0,
+      "fileCacheHits": 442,
+      "sdReadTransfers": 6866,
+      "sdReadSectors": 36274,
+      "sdBounceTransfers": 5718,
+      "sdErrors": 0,
+      "sdTimeouts": 0
+    },
+    "queue_high_water_since_boot": 16
+  }
+}

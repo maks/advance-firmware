@@ -15,6 +15,7 @@
 #include "Application/AppWindow.h"
 #include "Application/Instruments/AdvanceFM6/FM6Dx7Patch.h"
 #include "Application/Instruments/FM6Instrument.h"
+#include "Application/Instruments/MSamplerInstrument.h"
 #include "Application/Instruments/MidiInstrument.h"
 #include "Application/Instruments/SIDInstrument.h"
 #include "Application/Instruments/SampleInstrument.h"
@@ -29,6 +30,7 @@
 #include "Application/Player/PlayButtonBehavior.h"
 #include "Application/Views/ImportView.h"
 #include "Application/Views/InstrumentImportView.h"
+#include "Application/Views/InstrumentTransferProgress.h"
 #include "Application/Views/SampleEditorView.h"
 #include "Application/Views/VoiceScreenUtils.h"
 #include "BaseClasses/UIBigHexVarField.h"
@@ -45,16 +47,16 @@
 #include <nanoprintf.h>
 
 static const char *InstrumentTypeDisplayNames[IT_LAST] = {
-    "NONE",     "SAMPLE",    "SID",  "FM6",
-    "STARLOOM", "PICOSWARM", "MIDI", "ORIGINAL SAMPLE"};
+    "NONE",     "SAMPLE",         "SID", "FM6", "STARLOOM", "PICOSWARM", "MIDI",
+    "MSAMPLER", "ORIGINAL SAMPLE"};
 
 static constexpr int kMaxStandardInstrumentTypeIndex = IT_LAST - 2;
 static constexpr int kMaxLegacyInstrumentTypeIndex = IT_LAST - 1;
 static constexpr InstrumentType kDisplayIndexToInstrumentType[IT_LAST] = {
-    IT_NONE,     IT_SAMPLE_SOURCE, IT_SID,  IT_FM6,
-    IT_STARLOOM, IT_PICO_SWARM,    IT_MIDI, IT_SAMPLE};
-static constexpr int kInstrumentTypeToDisplayIndex[IT_LAST] = {0, 7, 1, 6,
-                                                               2, 3, 4, 5};
+    IT_NONE,       IT_SAMPLE_SOURCE, IT_SID,      IT_FM6,   IT_STARLOOM,
+    IT_PICO_SWARM, IT_MIDI,          IT_MSAMPLER, IT_SAMPLE};
+static constexpr int kInstrumentTypeToDisplayIndex[IT_LAST] = {0, 8, 1, 6, 2,
+                                                               3, 4, 5, 7};
 
 constexpr int32_t EmbeddedSlicerGraphXOffset = SampleSlicer::GraphXOffset;
 constexpr int32_t EmbeddedSlicerGraphYOffset = 6 * CHAR_HEIGHT;
@@ -468,6 +470,9 @@ void InstrumentView::refreshInstrumentFields() {
   case IT_PICO_SWARM:
     fillPicoSwarmParameters();
     break;
+  case IT_MSAMPLER:
+    fillMSamplerParameters();
+    break;
   case IT_LAST:
     // NA
     break;
@@ -553,6 +558,24 @@ void InstrumentView::fillPicoSwarmParameters() {
   intVarOffField_.emplace_back(
       UIIntVarOffField(position, *variable, "Table: %2.2X", 0, 0x7F, 1, 0x10));
   fieldList_.insert(fieldList_.end(), &intVarOffField_.back());
+}
+
+void InstrumentView::fillMSamplerParameters() {
+  auto *instrument = static_cast<MSamplerInstrument *>(getInstrument());
+  GUIPoint position = GetAnchor();
+  position._y += 2;
+
+  sampleActionField_.emplace_back("Project Instruments",
+                                  FourCC::ActionShowFM6Presets, position);
+  sampleActionField_.back().AddObserver(*this);
+  fieldList_.insert(fieldList_.end(), &sampleActionField_.back());
+
+  position._y += 2;
+  Variable *level =
+      instrument->FindVariable(FourCC::SampleSourceInstrumentLevel);
+  intVarField_.emplace_back(
+      UIIntVarField(position, *level, "Level: %2.2X", 0, 0xFF, 1, 0x40));
+  fieldList_.insert(fieldList_.end(), &intVarField_.back());
 }
 
 void InstrumentView::fillSIDParameters() {
@@ -2009,6 +2032,10 @@ void InstrumentView::Update(Observable &o, I_ObservableData *data) {
   case FourCC::ActionShowFM6Presets: {
     stopInstrumentPreview();
     ViewType vt = VT_FM6_PRESETS;
+    if (getInstrument()->GetType() == IT_MSAMPLER) {
+      InstrumentImportView::SetMode(InstrumentImportView::Mode::ProjectPreset);
+      vt = VT_INSTRUMENT_IMPORT;
+    }
     ViewEvent ve(VET_SWITCH_VIEW, &vt);
     SetChanged();
     NotifyObservers(&ve);
@@ -2178,10 +2205,21 @@ void InstrumentView::handleInstrumentExport() {
                 *this));
   } else {
     // Export the instrument using the name field
+    if (instrument->GetType() == IT_MSAMPLER) {
+      InstrumentTransferProgress::Begin(*this, "Exporting instrument");
+    }
     PersistencyResult result =
         PersistencyService::GetInstance()->ExportInstrument(instrument, name);
+    InstrumentTransferProgress::Finish();
 
-    if (result == PERSIST_EXISTS) {
+    if (result == PERSIST_EXISTS && instrument->GetType() == IT_MSAMPLER) {
+      MessageBox *mb =
+          MessageBox::Create(*this, "Instrument folder exists", MBBF_OK);
+      DoModal(mb,
+              ModalViewCallback::create<InstrumentView,
+                                        &InstrumentView::onSimpleModalDismiss>(
+                  *this));
+    } else if (result == PERSIST_EXISTS) {
       // File already exists, ask user if they want to override it
       etl::string<sizeof("Overwrite existing file: ") - 1> confirmMsg =
           "Overwrite existing file?";

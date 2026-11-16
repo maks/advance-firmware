@@ -1,0 +1,369 @@
+/*
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include "Application/Instruments/InstrumentBank.h"
+#include "Application/Instruments/MSamplerInstrument.h"
+#include "Application/Instruments/SamplePool.h"
+#include "Application/Instruments/WavHeader.h"
+#include "Application/Persistency/PersistencyDocument.h"
+#include "Application/Player/AudioVoice.h"
+#include "System/FileSystem/FakeFileSystem.h"
+#include "TestStreamingSamplePool.h"
+#include "doctest/doctest.h"
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace {
+class FileSystemScope {
+public:
+  explicit FileSystemScope(FileSystem *fileSystem)
+      : previous_(FileSystem::GetInstance()) {
+    FileSystem::Install(fileSystem);
+  }
+  ~FileSystemScope() { FileSystem::Install(previous_); }
+
+private:
+  FileSystem *previous_;
+};
+
+class SamplePoolScope {
+public:
+  explicit SamplePoolScope(SamplePool *pool)
+      : previous_(SamplePool::GetInstance()) {
+    SamplePool::Install(pool);
+  }
+  ~SamplePoolScope() { SamplePool::Install(previous_); }
+
+private:
+  SamplePool *previous_;
+};
+
+void addPcm16Wav(FakeFileSystem &fileSystem, const char *path) {
+  fileSystem.AddFile(path);
+  auto file = fileSystem.Open(path, "w");
+  REQUIRE(file);
+  REQUIRE(WavHeaderWriter::WriteHeader(file.get(), 44100, 1, 16));
+  const int16_t samples[] = {8000, 12000, -4000, -8000};
+  REQUIRE(file->Write(samples, sizeof(int16_t), 4) == sizeof(samples));
+  REQUIRE(WavHeaderWriter::UpdateFileSize(file.get(), 4, 1, 2));
+}
+} // namespace
+
+TEST_CASE("MSAMPLER plays the selected WAV zone from its attack cache") {
+  FakeFileSystem fileSystem;
+  FileSystemScope fileSystemScope(&fileSystem);
+  TestStreamingSamplePool samplePool;
+  SamplePoolScope samplePoolScope(&samplePool);
+  fileSystem.AddDirectory("/instruments");
+  addPcm16Wav(fileSystem, "/instruments/C4.wav");
+  fileSystem.AddFile(
+      "/instruments/Test.dspreset",
+      "<DecentSampler><groups><group><sample path=\"C4.wav\" "
+      "rootNote=\"C4\" loNote=\"60\" hiNote=\"60\" "
+      "loVel=\"1\" hiVel=\"127\"/></group></groups></DecentSampler>");
+
+  DecentSamplerPreset preset;
+  const auto parsed =
+      LoadDecentSamplerPreset("/instruments/Test.dspreset", preset);
+  REQUIRE(parsed);
+
+  MSamplerInstrument instrument;
+  REQUIRE(instrument.LoadPreset("/instruments/Test.dspreset"));
+  REQUIRE(instrument.StartWithVelocity(0, 60, 100));
+
+  AudioSample output[8]{};
+  REQUIRE(instrument.Render(0, output, 4, false));
+  CHECK(output[0] == doctest::Approx((8000.0f / 32768.0f) * (192.0f / 255.0f)));
+  CHECK(output[1] == output[0]);
+  CHECK(output[2] ==
+        doctest::Approx((12000.0f / 32768.0f) * (192.0f / 255.0f)));
+
+  instrument.Release(0);
+  REQUIRE(instrument.Render(0, output, 4, false));
+  CHECK(output[0] != 0.0f);
+}
+
+TEST_CASE("MSAMPLER bank restores a playable preset saved before its type") {
+  FakeFileSystem fileSystem;
+  FileSystemScope fileSystemScope(&fileSystem);
+  TestStreamingSamplePool samplePool;
+  SamplePoolScope samplePoolScope(&samplePool);
+  constexpr const char *presetDir =
+      "/projects/myproject/instruments/Modern Acoustic Guitar";
+  constexpr const char *presetPath =
+      "/projects/myproject/instruments/Modern Acoustic Guitar/"
+      "Modern Acoustic Guitar.dspreset";
+  constexpr const char *samplePath =
+      "/projects/myproject/instruments/Modern Acoustic Guitar/sample000.wav";
+  fileSystem.AddDirectory("/projects");
+  fileSystem.AddDirectory("/projects/myproject");
+  fileSystem.AddDirectory("/projects/myproject/instruments");
+  fileSystem.AddDirectory(presetDir);
+  addPcm16Wav(fileSystem, samplePath);
+  fileSystem.AddFile(
+      presetPath,
+      "<DecentSampler><groups><group><sample path=\"sample000.wav\" "
+      "rootNote=\"60\"/></group></groups></DecentSampler>");
+  auto savedFile = fileSystem.Open("/bank.xml", "w");
+  REQUIRE(savedFile);
+  tinyxml2::XMLPrinter printer(savedFile.get());
+  printer.OpenElement("BANK");
+  {
+    auto bank = std::make_unique<InstrumentBank>();
+    REQUIRE(bank->GetNextAndAssignID(IT_MSAMPLER, 0) != NO_MORE_INSTRUMENT);
+    auto *instrument =
+        static_cast<MSamplerInstrument *>(bank->GetInstrument(0));
+    REQUIRE(instrument->LoadPreset(presetPath));
+    bank->SaveContent(&printer);
+  }
+  printer.CloseElement();
+  savedFile.reset();
+  auto inspect = fileSystem.Open("/bank.xml", "r");
+  std::string xml;
+  for (int32_t c = inspect->GetC(); c != EOF; c = inspect->GetC()) {
+    xml += static_cast<char>(c);
+  }
+  inspect.reset();
+  // The shared audio test harness stubs I_Instrument::SaveContent. Supply
+  // the TYPE attribute that the real base writer appends after PRESET.
+  const auto headerEnd = xml.find("/>");
+  REQUIRE(headerEnd != std::string::npos);
+  xml.insert(headerEnd, " TYPE=\"MSAMPLER\"");
+  fileSystem.AddFile("/bank.xml", xml.c_str());
+  INFO(xml);
+  PersistencyDocument doc;
+  REQUIRE(doc.Load("/bank.xml"));
+  REQUIRE(doc.FirstChild());
+  auto restored = std::make_unique<InstrumentBank>();
+  restored->RestoreContent(&doc);
+  REQUIRE_FALSE(doc.HadError());
+  REQUIRE(restored->GetInstrument(0)->GetType() == IT_MSAMPLER);
+  auto *instrument =
+      static_cast<MSamplerInstrument *>(restored->GetInstrument(0));
+  CHECK(std::string(instrument->GetPresetPath()) == presetPath);
+  REQUIRE(instrument->StartWithVelocity(0, 60, 100));
+  AudioSample output[8]{};
+  REQUIRE(instrument->Render(0, output, 4, false));
+  CHECK(output[0] != 0.0f);
+}
+
+TEST_CASE("MSAMPLER interpolates through attack and streamed page boundaries") {
+  for (uint8_t channels : {uint8_t{1}, uint8_t{2}}) {
+    class StreamFailureFileSystem : public FakeFileSystem {
+    public:
+      bool failReads_ = false;
+      FileHandle Open(const char *path, const char *mode) override {
+        if (failReads_ && mode[0] == 'r') {
+          return {};
+        }
+        return FakeFileSystem::Open(path, mode);
+      }
+    } fileSystem;
+    FileSystemScope fsScope(&fileSystem);
+    TestStreamingSamplePool samplePool;
+    SamplePoolScope poolScope(&samplePool);
+    fileSystem.AddDirectory("/instruments");
+    const uint32_t frames = 60000;
+    auto sampleAt = [](uint32_t frame, uint8_t side) {
+      return static_cast<int16_t>((frame * 37U + side * 999U) % 30000U - 15000);
+    };
+    std::vector<int16_t> pcm(frames * channels);
+    for (uint32_t frame = 0; frame < frames; ++frame) {
+      for (uint8_t side = 0; side < channels; ++side) {
+        pcm[frame * channels + side] = sampleAt(frame, side);
+      }
+    }
+    fileSystem.AddFile("/instruments/Long.wav");
+    {
+      auto file = fileSystem.Open("/instruments/Long.wav", "w");
+      REQUIRE(file);
+      REQUIRE(WavHeaderWriter::WriteHeader(file.get(), 44100, channels, 16));
+      REQUIRE(file->Write(pcm.data(), sizeof(int16_t), pcm.size()) ==
+              static_cast<int32_t>(pcm.size() * sizeof(int16_t)));
+      REQUIRE(WavHeaderWriter::UpdateFileSize(file.get(), frames, channels, 2));
+    }
+    // 64 disjoint zones limit each attack to 48 KiB, exercising actual stream
+    // pages with small reproducible assets instead of multi-megabyte fixtures.
+    std::string preset = "<DecentSampler><groups><group>";
+    for (uint8_t note = 0; note < 64; ++note) {
+      preset += "<sample path=\"Long.wav\" rootNote=\"60\" loNote=\"" +
+                std::to_string(note) + "\" hiNote=\"" + std::to_string(note) +
+                "\" start=\"13\"/>";
+    }
+    preset += "</group></groups></DecentSampler>";
+    fileSystem.AddFile("/instruments/Long.dspreset", preset.c_str());
+    MSamplerInstrument instrument;
+    REQUIRE(instrument.LoadPreset("/instruments/Long.dspreset"));
+    for (float speed : {0.5f, 1.0f, 4.0f}) {
+      INFO("channels=" << static_cast<uint32_t>(channels)
+                       << " speed=" << speed);
+      REQUIRE(instrument.StartWithVelocity(0, 60, 100));
+      instrument.SetPitchMultiplier(0, speed);
+      float position = 13;
+      AudioSample output[514]{};
+      while (position < frames - 2) {
+        const int32_t count = std::min<int32_t>(
+            257, static_cast<int32_t>((frames - 2 - position) / speed));
+        if (count == 0) {
+          break;
+        }
+        REQUIRE(instrument.Render(0, output, count, false));
+        for (int32_t index = 0; index < count; ++index) {
+          const uint32_t frame = static_cast<uint32_t>(position);
+          const float fraction = position - frame;
+          for (uint8_t side = 0; side < 2; ++side) {
+            const uint8_t sourceSide = channels == 1 ? 0 : side;
+            const float first = sampleAt(frame, sourceSide) / 32768.0f;
+            const float second = sampleAt(frame + 1, sourceSide) / 32768.0f;
+            const float expected =
+                (first + (second - first) * fraction) * (192.0f / 255.0f);
+            REQUIRE(output[index * 2 + side] == doctest::Approx(expected));
+          }
+          position += speed;
+        }
+      }
+      instrument.Stop(0);
+    }
+    // Failed backing-file reads must fade and retire the voice, rather than
+    // leave its cursor frozen forever at the end of its cached attack.
+    fileSystem.failReads_ = true;
+    REQUIRE(instrument.StartWithVelocity(0, 60, 100));
+    AudioSample failedOutput[514]{};
+    uint32_t renderedFrames = 0;
+    uint32_t position = 0;
+    while (instrument.GetPlaybackPosition(0, position) &&
+           renderedFrames < frames) {
+      REQUIRE(instrument.Render(0, failedOutput, 257, false));
+      renderedFrames += 257;
+    }
+    CHECK(renderedFrames < frames);
+    CHECK_FALSE(instrument.GetPlaybackPosition(0, position));
+    CHECK(failedOutput[513] == 0.0f);
+  }
+}
+
+namespace {
+void addTransitionPreset(FakeFileSystem &fs) {
+  fs.AddDirectory("/instruments");
+  for (uint8_t zone = 0; zone < 2; ++zone) {
+    const char *path =
+        zone == 0 ? "/instruments/positive.wav" : "/instruments/negative.wav";
+    fs.AddFile(path);
+    auto file = fs.Open(path, "w");
+    REQUIRE(file);
+    REQUIRE(WavHeaderWriter::WriteHeader(file.get(), 44100, 2, 16));
+    std::vector<int16_t> pcm(44100 * 2);
+    for (uint32_t frame = 0; frame < 44100; ++frame) {
+      pcm[frame * 2] = zone == 0 ? 16000 : -12000;
+      pcm[frame * 2 + 1] = zone == 0 ? -8000 : 4000;
+    }
+    REQUIRE(file->Write(pcm.data(), sizeof(int16_t), pcm.size()) ==
+            static_cast<int32_t>(pcm.size() * sizeof(int16_t)));
+    REQUIRE(WavHeaderWriter::UpdateFileSize(file.get(), 44100, 2, 2));
+  }
+  fs.AddFile("/instruments/Transitions.dspreset",
+             "<DecentSampler><groups><group>"
+             "<sample path=\"positive.wav\" rootNote=\"60\" loNote=\"60\" "
+             "hiNote=\"60\"/>"
+             "<sample path=\"negative.wav\" rootNote=\"61\" loNote=\"61\" "
+             "hiNote=\"61\"/>"
+             "</group></groups></DecentSampler>");
+}
+} // namespace
+
+TEST_CASE("MSAMPLER voice controls fit and note-off follows amp release") {
+  FakeFileSystem fs;
+  FileSystemScope fsScope(&fs);
+  TestStreamingSamplePool pool;
+  SamplePoolScope poolScope(&pool);
+  addTransitionPreset(fs);
+  MSamplerInstrument instrument;
+  VoiceParameters parameters;
+  parameters.AppendTo(*instrument.Variables());
+  REQUIRE(instrument.Variables()->size() ==
+          3 + VoiceParameters::PersistedVariableCount);
+  REQUIRE(instrument.FindVariable(FourCC::VoiceAmpRelease));
+  instrument.FindVariable(FourCC::VoiceAmpRelease)->SetInt(0x23, false);
+  instrument.FindVariable(FourCC::VoiceAmpSustain)->SetInt(0x7f, false);
+  REQUIRE(instrument.LoadPreset("/instruments/Transitions.dspreset"));
+  AudioVoice voice(0);
+  REQUIRE(voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+  AudioSample output[256]{};
+  REQUIRE(voice.Render(output, 128, false));
+  voice.ReleaseInstrument();
+  REQUIRE(voice.Render(output, 128, false));
+  CHECK(output[64 * 2] < 0.0f);
+  CHECK(output[64 * 2 + 1] > 0.0f);
+  uint32_t position = 0;
+  REQUIRE(instrument.GetPlaybackPosition(0, position));
+  CHECK(position == 256);
+  for (uint32_t block = 0; block < 400 && voice.GetInstrument(); ++block) {
+    REQUIRE(voice.Render(output, 128, false));
+  }
+  CHECK(voice.GetInstrument() == nullptr);
+  CHECK_FALSE(instrument.GetPlaybackPosition(0, position));
+
+  // Default zero release still applies a short de-click release instead of a
+  // single-sample cut to silence.
+  instrument.FindVariable(FourCC::VoiceAmpRelease)->SetInt(0, false);
+  REQUIRE(voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+  REQUIRE(voice.Render(output, 32, false));
+  const AudioSample beforeReleaseLeft = output[62];
+  voice.ReleaseInstrument();
+  REQUIRE(voice.Render(output, 32, false));
+  CHECK(output[0] < 0.0f);
+  CHECK(std::abs(output[0]) < std::abs(beforeReleaseLeft));
+  CHECK(std::abs(output[62]) < std::abs(output[0]));
+}
+
+TEST_CASE("MSAMPLER replacement is continuous across render blocks") {
+  FakeFileSystem fs;
+  FileSystemScope fsScope(&fs);
+  TestStreamingSamplePool pool;
+  SamplePoolScope poolScope(&pool);
+  addTransitionPreset(fs);
+  MSamplerInstrument instrument;
+  VoiceParameters parameters;
+  parameters.AppendTo(*instrument.Variables());
+  REQUIRE(instrument.LoadPreset("/instruments/Transitions.dspreset"));
+  for (const auto mode :
+       {InstrumentStartMode::NewNote, InstrumentStartMode::Retrigger}) {
+    AudioVoice voice(0);
+    REQUIRE(
+        voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+    AudioSample output[256]{};
+    REQUIRE(voice.Render(output, 128, false));
+    const AudioSample previousLeft = output[254];
+    const AudioSample previousRight = output[255];
+    REQUIRE(voice.StartInstrument(&instrument, 61, mode));
+    REQUIRE(voice.Render(output, 17, false));
+    CHECK(output[0] == doctest::Approx(previousLeft));
+    CHECK(output[1] == doctest::Approx(previousRight));
+    AudioVoice reference(1);
+    REQUIRE(reference.StartInstrument(&instrument, 60,
+                                      InstrumentStartMode::NewNote));
+    AudioSample wholeBlock[290]{};
+    REQUIRE(reference.Render(wholeBlock, 128, false));
+    REQUIRE(reference.StartInstrument(&instrument, 61, mode));
+    REQUIRE(reference.Render(wholeBlock, 145, false));
+    for (uint32_t index = 0; index < 34; ++index) {
+      CHECK(output[index] == doctest::Approx(wholeBlock[index]));
+    }
+    REQUIRE(voice.Render(output, 128, false));
+    for (uint32_t index = 0; index < 256; ++index) {
+      CHECK(output[index] == doctest::Approx(wholeBlock[index + 34]));
+    }
+    reference.StopInstrument();
+    CHECK(output[100 * 2] > 0.0f);
+    CHECK(output[100 * 2 + 1] < 0.0f);
+    voice.StopInstrument();
+    REQUIRE(
+        voice.StartInstrument(&instrument, 60, InstrumentStartMode::NewNote));
+    REQUIRE(voice.Render(output, 128, false));
+    CHECK(output[2] < 0.0f); // An explicit stop must discard the old tail.
+    voice.StopInstrument();
+  }
+}

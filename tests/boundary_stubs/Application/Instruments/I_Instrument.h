@@ -14,8 +14,9 @@
 #include "Foundation/Types/Types.h"
 #include "Foundation/Variables/Variable.h"
 
-enum InstrumentType { IT_NONE = 0, IT_SAMPLE, IT_MIDI, IT_LAST };
-static const char *InstrumentTypeNames[IT_LAST] = {"NONE", "SAMPLE", "MIDI"};
+enum InstrumentType { IT_NONE = 0, IT_SAMPLE, IT_MIDI, IT_MSAMPLER, IT_LAST };
+static const char *InstrumentTypeNames[IT_LAST] = {"NONE", "SAMPLE", "MIDI",
+                                                   "MSAMPLER"};
 
 class I_Instrument {
 public:

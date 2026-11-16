@@ -26,11 +26,15 @@ PlayerChannel::PlayerChannel(int index)
 PlayerChannel::~PlayerChannel() {}
 
 void PlayerChannel::StartInstrument(I_Instrument *instr, unsigned char note,
-                                    InstrumentStartMode mode) {
+                                    InstrumentStartMode mode,
+                                    uint8_t velocity) {
   const bool reuseMidiInstrument =
       (midiInstrument_ == instr) && mode == InstrumentStartMode::TiedNote;
   const bool reuseVoiceInstrument =
-      (voice_.GetInstrument() == instr) && mode != InstrumentStartMode::NewNote;
+      (voice_.GetInstrument() != nullptr) &&
+      ((voice_.GetInstrument() == instr &&
+        mode != InstrumentStartMode::NewNote) ||
+       (instr && instr->GetType() == IT_MSAMPLER));
 
   if ((voice_.GetInstrument() || midiInstrument_) && !reuseMidiInstrument &&
       !reuseVoiceInstrument) {
@@ -50,7 +54,7 @@ void PlayerChannel::StartInstrument(I_Instrument *instr, unsigned char note,
     return;
   }
 
-  voice_.StartInstrument(instr, note, mode);
+  voice_.StartInstrument(instr, note, mode, velocity);
 };
 
 void PlayerChannel::StopInstrument() {

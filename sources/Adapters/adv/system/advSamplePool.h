@@ -29,6 +29,8 @@ public:
   virtual bool CheckSampleFits(uint32_t sampleSize);
   virtual uint32_t GetAvailableSampleStorageSpace();
   virtual bool unloadSample(uint32_t i);
+  void *ReserveStreamingStorage(uint32_t bytes) override;
+  void ReleaseStreamingStorage(void *memory) override;
 
 protected:
   virtual bool loadSample(const char *name);

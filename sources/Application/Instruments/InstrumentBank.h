@@ -19,6 +19,7 @@
 #include "Application/Persistency/Persistent.h"
 #include "Externals/etl/include/etl/variant_pool.h"
 #include "FM6Instrument.h"
+#include "MSamplerInstrument.h"
 #include "MidiInstrument.h"
 #include "NoneInstrument.h"
 #include "SIDInstrument.h"
@@ -70,7 +71,8 @@ private:
   etl::array<VoiceParameters, MAX_INSTRUMENT_COUNT> voiceParameters_;
   etl::variant_pool<MAX_INSTRUMENT_COUNT, SampleInstrument,
                     SampleSourceInstrument, MidiInstrument, SIDInstrument,
-                    FM6Instrument, StarLoomInstrument, picoSwarmInstrument>
+                    FM6Instrument, StarLoomInstrument, picoSwarmInstrument,
+                    MSamplerInstrument>
       instrumentPool_;
   NoneInstrument none_ = NoneInstrument();
   // Loading or importing a legacy sample instrument opts the project into

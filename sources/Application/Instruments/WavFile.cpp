@@ -19,6 +19,8 @@
 #include "System/FileSystem/I_File.h"
 #include "WavHeader.h"
 #include "config/MemorySections.h"
+#include <cmath>
+#include <limits>
 #include <stdlib.h>
 
 unsigned char WavFile::readBuffer_[BUFFER_SIZE];
@@ -129,6 +131,118 @@ float ConvertSampleToFloat(const uint8_t *samplePtr, uint16_t audioFormat,
   return 0.0f;
 }
 
+namespace {
+uint32_t readBigEndian(const uint8_t *bytes, uint32_t count) {
+  uint32_t value = 0;
+  for (uint32_t index = 0; index < count; ++index) {
+    value = (value << 8) | bytes[index];
+  }
+  return value;
+}
+
+etl::expected<WavHeaderInfo, WAVEFILE_ERROR> readAiffHeader(I_File *file) {
+  file->Seek(0, SEEK_END);
+  const int64_t fileSize = file->Tell();
+  file->Seek(0, SEEK_SET);
+  uint8_t form[12];
+  if (file->Read(form, sizeof(form)) != sizeof(form) ||
+      std::memcmp(form, "FORM", 4) != 0 ||
+      std::memcmp(form + 8, "AIFF", 4) != 0) {
+    return etl::unexpected(UNSUPPORTED_FILE_FORMAT);
+  }
+  const uint64_t formEnd = uint64_t{readBigEndian(form + 4, 4)} + 8;
+  if (formEnd < 12 || formEnd > static_cast<uint64_t>(fileSize)) {
+    return etl::unexpected(INVALID_HEADER);
+  }
+  WavHeaderInfo header{};
+  uint32_t frames = 0;
+  uint32_t soundBytes = 0;
+  bool commonFound = false;
+  bool soundFound = false;
+  uint64_t position = 12;
+  while (position + 8 <= formEnd) {
+    file->Seek(static_cast<int32_t>(position), SEEK_SET);
+    uint8_t chunk[8];
+    if (file->Read(chunk, sizeof(chunk)) != sizeof(chunk)) {
+      return etl::unexpected(INVALID_HEADER);
+    }
+    const uint32_t length = readBigEndian(chunk + 4, 4);
+    const uint64_t end = position + 8 + length;
+    if (end > formEnd || end > INT32_MAX) {
+      return etl::unexpected(INVALID_HEADER);
+    }
+    if (std::memcmp(chunk, "COMM", 4) == 0) {
+      uint8_t common[18];
+      if (commonFound || length < sizeof(common) ||
+          file->Read(common, sizeof(common)) != sizeof(common)) {
+        return etl::unexpected(INVALID_HEADER);
+      }
+      header.numChannels = readBigEndian(common, 2);
+      frames = readBigEndian(common + 2, 4);
+      header.bitsPerSample = readBigEndian(common + 6, 2);
+      if ((header.numChannels != 1 && header.numChannels != 2) ||
+          (header.bitsPerSample != 8 && header.bitsPerSample != 16 &&
+           header.bitsPerSample != 24 && header.bitsPerSample != 32)) {
+        return etl::unexpected(UNSUPPORTED_AUDIO_FORMAT);
+      }
+      const uint16_t exponent = readBigEndian(common + 8, 2);
+      const uint64_t mantissa =
+          (uint64_t{readBigEndian(common + 10, 4)} << 32) |
+          readBigEndian(common + 14, 4);
+      const double rate =
+          std::ldexp(static_cast<double>(mantissa),
+                     static_cast<int32_t>(exponent) - 16383 - 63);
+      if ((exponent & 0x8000) || exponent == 0 || exponent == 0x7fff ||
+          !(mantissa & (uint64_t{1} << 63)) || !std::isfinite(rate) ||
+          rate < 1 || rate > INT32_MAX || rate != std::floor(rate)) {
+        return etl::unexpected(UNSUPPORTED_SAMPLERATE);
+      }
+      header.sampleRate = static_cast<uint32_t>(rate);
+      header.bytesPerSample = header.bitsPerSample / 8;
+      header.audioFormat = 1;
+      commonFound = true;
+    } else if (std::memcmp(chunk, "SSND", 4) == 0) {
+      uint8_t sound[8];
+      if (soundFound || length < sizeof(sound) ||
+          file->Read(sound, sizeof(sound)) != sizeof(sound)) {
+        return etl::unexpected(INVALID_HEADER);
+      }
+      const uint32_t offset = readBigEndian(sound, 4);
+      if (offset > length - 8) {
+        return etl::unexpected(INVALID_HEADER);
+      }
+      header.dataOffset = static_cast<uint32_t>(position + 16 + offset);
+      soundBytes = length - 8 - offset;
+      soundFound = true;
+    }
+    position = end + (length & 1u);
+  }
+  const uint64_t dataBytes =
+      uint64_t{frames} * header.numChannels * header.bytesPerSample;
+  if (!commonFound || !soundFound || frames == 0 || dataBytes > soundBytes ||
+      uint64_t{frames} * header.numChannels * 2 > INT32_MAX) {
+    return etl::unexpected(INVALID_HEADER);
+  }
+  header.dataChunkSize = static_cast<uint32_t>(dataBytes);
+  return header;
+}
+
+// Normalize AIFF signed big-endian PCM for the existing WAV decoders.
+const uint8_t *normalizeAiff(const uint8_t *sample, uint8_t *normalized,
+                             uint32_t width, bool aiff) {
+  if (!aiff) {
+    return sample;
+  }
+  for (uint32_t index = 0; index < width; ++index) {
+    normalized[index] = sample[width - index - 1];
+  }
+  if (width == 1) {
+    normalized[0] ^= 0x80;
+  }
+  return normalized;
+}
+} // namespace
+
 WavFile::WavFile()
     : file_(), readBufferSize_(0), samples_(nullptr), sampleBufferSize_(0),
       size_(0), sampleRate_(0), channelCount_(0), bytePerSample_(0),
@@ -142,12 +256,18 @@ etl::expected<void, WAVEFILE_ERROR> WavFile::Open(const char *name) {
   if (!file)
     return etl::unexpected(INVALID_FILE);
 
-  auto header = WavHeaderWriter::ReadHeader(file.get());
+  uint8_t magic[4];
+  const bool isAiff = file->Read(magic, sizeof(magic)) == sizeof(magic) &&
+                      std::memcmp(magic, "FORM", 4) == 0;
+  file->Seek(0, SEEK_SET);
+  auto header = isAiff ? readAiffHeader(file.get())
+                       : WavHeaderWriter::ReadHeader(file.get());
   if (!header) {
     return etl::unexpected(header.error());
   }
 
   file_ = std::move(file);
+  aiff_ = isAiff;
 
   sampleRate_ = header->sampleRate;
   channelCount_ = header->numChannels;
@@ -188,6 +308,9 @@ int WavFile::GetSampleRate(int note) { return sampleRate_; };
 float WavFile::GetLengthInSec() { return (float)size_ / sampleRate_; };
 
 long WavFile::readBlock(long start, long size) {
+  if (!file_) {
+    return 0;
+  }
   if (size > readBufferSize_) {
     readBufferSize_ = size;
   }
@@ -197,6 +320,9 @@ long WavFile::readBlock(long start, long size) {
 };
 
 bool WavFile::GetBuffer(long start, long size) {
+  if (!file_) {
+    return false;
+  }
   samples_ = convertedBuffer_;
 
   const int32_t totalSamples = size * channelCount_;
@@ -227,9 +353,11 @@ bool WavFile::GetBuffer(long start, long size) {
     readBlock(bufferStart, readSize);
 
     for (int32_t i = 0; i < framesThisRead * channelCount_; ++i) {
+      uint8_t normalized[4];
       const uint8_t *samplePtr = readBuffer_ + i * bytePerSample_;
-      convertedBuffer_[dstOffset + i] =
-          ConvertSampleToInt16(samplePtr, audioFormat_, bytePerSample_);
+      convertedBuffer_[dstOffset + i] = ConvertSampleToInt16(
+          normalizeAiff(samplePtr, normalized, bytePerSample_, aiff_),
+          audioFormat_, bytePerSample_);
     }
     bufferStart += readSize;
     framesRemaining -= framesThisRead;
@@ -242,6 +370,9 @@ uint32_t WavFile::GetDiskSize(int note) { return sampleBufferSize_; }
 
 // rewind to start of data (no header)
 bool WavFile::Rewind() {
+  if (!file_) {
+    return false;
+  }
   file_->Seek(dataPosition_, SEEK_SET);
   readCount_ = size_ * channelCount_ * bytePerSample_;
   return true;
@@ -250,7 +381,7 @@ bool WavFile::Rewind() {
 // incrementally read file, use rewind method to go to beginning
 bool WavFile::Read(void *buff, uint32_t btr, uint32_t *bytesRead) {
 
-  if (!buff || !bytesRead) {
+  if (!buff || !bytesRead || !file_) {
     return false;
   }
 
@@ -305,14 +436,20 @@ bool WavFile::Read(void *buff, uint32_t btr, uint32_t *bytesRead) {
   if (bytePerSample_ == 1) {
     // Expanding 8-bit to 16-bit; convert backward to avoid overwrite
     for (int32_t i = static_cast<int32_t>(totalSamples) - 1; i >= 0; --i) {
+      uint8_t normalized[4];
       const uint8_t *samplePtr = src + i * bytePerSample_;
-      dst[i] = ConvertSampleToInt16(samplePtr, audioFormat_, bytePerSample_);
+      dst[i] = ConvertSampleToInt16(
+          normalizeAiff(samplePtr, normalized, bytePerSample_, aiff_),
+          audioFormat_, bytePerSample_);
     }
   } else {
     // retain or shrink width
     for (uint32_t i = 0; i < totalSamples; ++i) {
+      uint8_t normalized[4];
       const uint8_t *samplePtr = src + i * bytePerSample_;
-      dst[i] = ConvertSampleToInt16(samplePtr, audioFormat_, bytePerSample_);
+      dst[i] = ConvertSampleToInt16(
+          normalizeAiff(samplePtr, normalized, bytePerSample_, aiff_),
+          audioFormat_, bytePerSample_);
     }
   }
   *bytesRead = framesRead * dstFrameSize;
@@ -325,7 +462,7 @@ bool WavFile::Read(void *buff, uint32_t btr, uint32_t *bytesRead) {
 // so that we don't lose precision from higher bitrate samples
 bool WavFile::ReadFloat(float *buff, uint32_t maxSamples,
                         uint32_t *samplesRead) {
-  if (!buff || !samplesRead) {
+  if (!buff || !samplesRead || !file_) {
     return false;
   }
 
@@ -374,8 +511,11 @@ bool WavFile::ReadFloat(float *buff, uint32_t maxSamples,
     float *dst = buff + (framesReadTotal * channelCount_);
 
     for (uint32_t i = 0; i < totalSamples; ++i) {
+      uint8_t normalized[4];
       const uint8_t *samplePtr = src + i * bytePerSample_;
-      dst[i] = ConvertSampleToFloat(samplePtr, audioFormat_, bytePerSample_);
+      dst[i] = ConvertSampleToFloat(
+          normalizeAiff(samplePtr, normalized, bytePerSample_, aiff_),
+          audioFormat_, bytePerSample_);
     }
 
     framesReadTotal += framesRead;

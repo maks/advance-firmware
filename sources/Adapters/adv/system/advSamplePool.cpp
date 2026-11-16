@@ -25,6 +25,26 @@ uint32_t advSamplePool::writeOffset2_ = 0;
 uint32_t advSamplePool::storeLimit1_ = STORE1_SIZE;
 uint32_t advSamplePool::storeLimit2_ = STORE2_SIZE;
 
+namespace {
+struct StreamingReservation {
+  uint32_t offset_ = 0;
+  uint32_t size_ = 0;
+  uint8_t store_ = 0;
+  uint8_t state_ = 0; // 0 unused, 1 active, 2 released
+};
+
+constexpr uint32_t kStreamingAlignment = 32;
+constexpr uint8_t kMaxStreamingReservations = 64;
+StreamingReservation streamingReservations[kMaxStreamingReservations];
+
+uint32_t alignStreamingSize(uint32_t size) {
+  if (size > UINT32_MAX - (kStreamingAlignment - 1)) {
+    return 0;
+  }
+  return (size + kStreamingAlignment - 1) & ~(kStreamingAlignment - 1);
+}
+} // namespace
+
 advSamplePool::advSamplePool() : SamplePool() {}
 
 void advSamplePool::Reset() {
@@ -38,6 +58,11 @@ void advSamplePool::Reset() {
   // Reset flash erase and write pointers when we close project
   writeOffset1_ = 0;
   writeOffset2_ = 0;
+  storeLimit1_ = STORE1_SIZE;
+  storeLimit2_ = STORE2_SIZE;
+  for (auto &reservation : streamingReservations) {
+    reservation = {};
+  }
 };
 
 bool advSamplePool::CheckSampleFits(uint32_t sampleSize) {
@@ -50,6 +75,87 @@ uint32_t advSamplePool::GetAvailableSampleStorageSpace() {
                                                     storeLimit1_) +
          AdvanceSampleStorage::GetAvailableCapacity(writeOffset2_,
                                                     storeLimit2_);
+}
+
+void *advSamplePool::ReserveStreamingStorage(uint32_t bytes) {
+  const uint32_t allocationSize = alignStreamingSize(bytes);
+  if (allocationSize == 0) {
+    return nullptr;
+  }
+
+  uint32_t *limit = nullptr;
+  uint32_t writeOffset = 0;
+  uint8_t *base = nullptr;
+  uint8_t store = 0;
+
+  // Prefer the larger SDRAM2 store, keeping the SDRAM1 resident pool available
+  // for existing sample import behavior.
+  if (allocationSize <= storeLimit1_ - writeOffset1_) {
+    limit = &storeLimit1_;
+    writeOffset = writeOffset1_;
+    base = sampleStore1;
+    store = 1;
+  } else if (allocationSize <= storeLimit2_ - writeOffset2_) {
+    limit = &storeLimit2_;
+    writeOffset = writeOffset2_;
+    base = sampleStore2;
+    store = 2;
+  } else {
+    return nullptr;
+  }
+
+  StreamingReservation *slot = nullptr;
+  for (auto &reservation : streamingReservations) {
+    if (reservation.state_ == 0) {
+      slot = &reservation;
+      break;
+    }
+  }
+  if (slot == nullptr || *limit < allocationSize ||
+      *limit - allocationSize < writeOffset) {
+    return nullptr;
+  }
+
+  const uint32_t offset = *limit - allocationSize;
+  slot->offset_ = offset;
+  slot->size_ = allocationSize;
+  slot->store_ = store;
+  slot->state_ = 1;
+  *limit = offset;
+  return base + offset;
+}
+
+void advSamplePool::ReleaseStreamingStorage(void *memory) {
+  if (memory == nullptr) {
+    return;
+  }
+
+  for (auto &reservation : streamingReservations) {
+    if (reservation.state_ != 1) {
+      continue;
+    }
+    uint8_t *base = reservation.store_ == 1 ? sampleStore1 : sampleStore2;
+    if (base + reservation.offset_ != memory) {
+      continue;
+    }
+    reservation.state_ = 2;
+
+    bool advanced = true;
+    while (advanced) {
+      advanced = false;
+      uint32_t &limit = reservation.store_ == 1 ? storeLimit1_ : storeLimit2_;
+      for (auto &candidate : streamingReservations) {
+        if (candidate.state_ == 2 && candidate.store_ == reservation.store_ &&
+            candidate.offset_ + candidate.size_ == limit) {
+          limit += candidate.size_;
+          candidate = {};
+          advanced = true;
+          break;
+        }
+      }
+    }
+    return;
+  }
 }
 
 bool advSamplePool::loadSample(const char *name) {

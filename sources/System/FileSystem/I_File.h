@@ -10,6 +10,9 @@
 #ifndef _I_FILE_H_
 #define _I_FILE_H_
 
+#include <cstdint>
+#include <limits>
+
 struct FileCloser;
 class I_File;
 bool CloseFile_DO_NOT_USE(I_File *);
@@ -24,6 +27,17 @@ public:
   virtual int Write(const void *ptr, int size, int nmemb) = 0;
   virtual void Seek(long offset, int whence) = 0;
   virtual long Tell() = 0;
+  virtual bool Seek64(uint64_t offset, int whence) {
+    if (offset > static_cast<uint64_t>(std::numeric_limits<long>::max())) {
+      return false;
+    }
+    Seek(static_cast<long>(offset), whence);
+    return Error() == 0;
+  }
+  virtual uint64_t Tell64() {
+    const long position = Tell();
+    return position < 0 ? UINT64_MAX : static_cast<uint64_t>(position);
+  }
   virtual int Error() = 0;
   virtual bool Sync() = 0;
   virtual void Dispose() = 0;

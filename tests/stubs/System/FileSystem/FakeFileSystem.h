@@ -45,17 +45,25 @@ public:
   bool ListDirectory(const char *absoluteDir,
                      etl::ivector<FileSystemEntry> *entries, const char *filter,
                      bool directoriesOnly, bool includeHidden = false) override;
+  bool ListDirectoryPage(const char *absoluteDir,
+                         etl::ivector<FileSystemEntry> *entries,
+                         const char *filter, bool directoriesOnly,
+                         bool includeHidden, size_t offset,
+                         size_t &totalMatches) override;
   bool DeleteFile(const char *name) override;
   bool DeleteDir(const char *name) override;
   bool exists(const char *path) override;
   bool makeDir(const char *path, bool pFlag = false) override;
   bool CopyFile(const char *srcFilename, const char *destFilename) override;
   bool MoveFile(const char *srcFilename, const char *destFilename) override;
+  bool GetFreeSpaceBytes(const char *path, uint64_t &bytes) override;
+  bool RenameDir(const char *srcPath, const char *destPath) override;
   bool isExFat() override { return false; }
 
   void AddDirectory(const char *absolutePath);
   void AddFile(const char *absolutePath, const char *contents = "");
   void SetAllowLegacyCwdResolution(bool allow);
+  void SetFreeSpaceBytes(uint64_t bytes);
   void FailNext(FakeFileSystemOperationType type);
   void ClearOperationLog();
 
@@ -88,6 +96,7 @@ private:
   std::vector<FakeFileSystemOperation> operationLog_;
   std::string currentDirectory_;
   bool allowLegacyCwdResolution_;
+  uint64_t freeSpaceBytes_;
   std::optional<FakeFileSystemOperationType> failNextOperation_;
 };
 

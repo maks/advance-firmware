@@ -34,6 +34,8 @@ public:
   int Write(const void *ptr, int size, int nmemb) override;
   void Seek(long offset, int whence) override;
   long Tell() override;
+  bool Seek64(uint64_t offset, int whence) override;
+  uint64_t Tell64() override;
   bool Close() override;
   int Error() override;
   bool Sync() override;
@@ -55,6 +57,11 @@ public:
                              etl::ivector<FileSystemEntry> *entries,
                              const char *filter, bool directoriesOnly,
                              bool includeHidden = false) override;
+  bool ListDirectoryPage(const char *absoluteDir,
+                         etl::ivector<FileSystemEntry> *entries,
+                         const char *filter, bool directoriesOnly,
+                         bool includeHidden, size_t offset,
+                         size_t &totalMatches) override;
   virtual bool DeleteFile(const char *name) override;
   virtual bool DeleteDir(const char *name) override;
   virtual void BeginBatch() override;
@@ -65,6 +72,8 @@ public:
                         const char *destFilename) override;
   virtual bool MoveFile(const char *srcFilename,
                         const char *destFilename) override;
+  bool GetFreeSpaceBytes(const char *path, uint64_t &bytes) override;
+  bool RenameDir(const char *srcPath, const char *destPath) override;
   virtual bool isExFat() { return false; }; // not used on the Advance
 };
 

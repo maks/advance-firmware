@@ -16,6 +16,7 @@ add_library(application_views
   GrooveView.cpp
   ImportView.cpp
   InstrumentImportView.cpp
+  DslibraryExtractor.cpp
   FM6PresetBrowserView.cpp
   InstrumentView.cpp
   VoiceView.cpp
@@ -43,6 +44,14 @@ add_library(application_views
   CreditsView.cpp
 )
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  # This routine is only invoked by the dedicated, statically allocated
+  # extraction task (24 KiB stack); GCC's default 2 KiB application limit is
+  # not the correct limit for that worker.
+  set_source_files_properties(DslibraryExtractor.cpp PROPERTIES
+    COMPILE_OPTIONS "-Wno-stack-usage")
+endif()
+
 target_link_libraries(application_views PUBLIC
   application_views_baseclasses
   application_effects
@@ -50,6 +59,7 @@ target_link_libraries(application_views PUBLIC
   etl
   application_utils
   platform_display
+  miniz
 )
 
 target_include_directories(application_views PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

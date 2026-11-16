@@ -153,7 +153,8 @@ private:
 };
 
 FakeFileSystem::FakeFileSystem()
-    : currentDirectory_("/"), allowLegacyCwdResolution_(false) {
+    : currentDirectory_("/"), allowLegacyCwdResolution_(false),
+      freeSpaceBytes_(64ULL * 1024ULL * 1024ULL * 1024ULL) {
   nodes_.emplace("/", Node{.isDirectory = true, .contents = ""});
 }
 
@@ -206,6 +207,23 @@ bool FakeFileSystem::ListDirectory(const char *absoluteDir,
                                    etl::ivector<FileSystemEntry> *entries,
                                    const char *filter, bool directoriesOnly,
                                    bool includeHidden) {
+  size_t totalMatches = 0;
+  const bool listed =
+      ListDirectoryPage(absoluteDir, entries, filter, directoriesOnly,
+                        includeHidden, 0, totalMatches);
+  if (listed && entries != nullptr && totalMatches > entries->size()) {
+    SetLastListDirectoryStatus(DirectoryListStatus::Truncated);
+    return false;
+  }
+  return listed;
+}
+
+bool FakeFileSystem::ListDirectoryPage(const char *absoluteDir,
+                                       etl::ivector<FileSystemEntry> *entries,
+                                       const char *filter, bool directoriesOnly,
+                                       bool includeHidden, size_t offset,
+                                       size_t &totalMatches) {
+  totalMatches = 0;
   std::string normalizedDir;
   const bool hasValidDir = normalizeAbsolutePath(absoluteDir, normalizedDir) &&
                            nodes_.contains(normalizedDir) &&
@@ -245,9 +263,9 @@ bool FakeFileSystem::ListDirectory(const char *absoluteDir,
           toLower(remainder).find(toLower(filter)) == std::string::npos) {
         continue;
       }
-      if (entries->full()) {
-        success = false;
-        break;
+      const size_t matchIndex = totalMatches++;
+      if (matchIndex < offset || entries->full()) {
+        continue;
       }
 
       FileSystemEntry entry;
@@ -259,6 +277,11 @@ bool FakeFileSystem::ListDirectory(const char *absoluteDir,
     }
   }
 
+  if (!allowCall) {
+    SetLastListDirectoryStatus(DirectoryListStatus::Error);
+  } else {
+    SetLastListDirectoryStatus(DirectoryListStatus::Ok);
+  }
   logOperation(FakeFileSystemOperationType::ListDirectory,
                absoluteDir ? absoluteDir : "", filter ? filter : "", "",
                normalizedDir, success);
@@ -348,6 +371,31 @@ bool FakeFileSystem::MoveFile(const char *srcFilename,
   return success;
 }
 
+bool FakeFileSystem::GetFreeSpaceBytes(const char *path, uint64_t &bytes) {
+  std::string normalizedPath;
+  if (!normalizeAbsolutePath(path, normalizedPath)) {
+    bytes = 0;
+    return false;
+  }
+  bytes = freeSpaceBytes_;
+  return true;
+}
+
+bool FakeFileSystem::RenameDir(const char *srcPath, const char *destPath) {
+  std::string normalizedSrc;
+  std::string normalizedDst;
+  if (!normalizeAbsolutePath(srcPath, normalizedSrc) ||
+      !normalizeAbsolutePath(destPath, normalizedDst)) {
+    return false;
+  }
+  const auto source = nodes_.find(normalizedSrc);
+  if (source == nodes_.end() || !source->second.isDirectory ||
+      nodes_.find(normalizedDst) != nodes_.end()) {
+    return false;
+  }
+  return moveNode(normalizedSrc, normalizedDst);
+}
+
 void FakeFileSystem::AddDirectory(const char *absolutePath) {
   std::string normalizedPath;
   if (normalizeAbsolutePath(absolutePath, normalizedPath)) {
@@ -364,6 +412,10 @@ void FakeFileSystem::AddFile(const char *absolutePath, const char *contents) {
 
 void FakeFileSystem::SetAllowLegacyCwdResolution(bool allow) {
   allowLegacyCwdResolution_ = allow;
+}
+
+void FakeFileSystem::SetFreeSpaceBytes(uint64_t bytes) {
+  freeSpaceBytes_ = bytes;
 }
 
 void FakeFileSystem::FailNext(FakeFileSystemOperationType type) {

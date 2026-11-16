@@ -12,12 +12,14 @@
  */
 
 #include "PersistencyService.h"
+#include "Application/Instruments/MSamplerInstrument.h"
+#include "Application/Views/InstrumentTransferProgress.h"
 #include "Foundation/Services/ServiceRegistry.h"
 
-#include "Application/Utils/DrawUtils.h"
 #include "Foundation/Types/Types.h"
 #include "Persistent.h"
 #include "System/Console/Trace.h"
+#include "System/Console/nanoprintf.h"
 #include "System/FileSystem/FileSystem.h"
 #include "System/FileSystem/PathUtils.h"
 #include "System/io/Status.h"
@@ -470,6 +472,56 @@ PersistencyResult PersistencyService::ExportInstrument(
     bool overwrite) {
   auto fs = FileSystem::GetInstance();
 
+  if (instrument && instrument->GetType() == IT_MSAMPLER) {
+    auto *sampler = static_cast<MSamplerInstrument *>(instrument);
+    FileSystemPath::PathString sourceDir, destination, source, target;
+    if (name.empty() || name == "." || name == ".." ||
+        std::strchr(name.c_str(), '/') || std::strchr(name.c_str(), '\\') ||
+        !FileSystemPath::DirName(sampler->GetPresetPath(), sourceDir) ||
+        !FileSystemPath::JoinPath(INSTRUMENTS_DIR, name.c_str(), destination)) {
+      return PERSIST_ERROR;
+    }
+    if (fs->exists(destination.c_str())) {
+      return PERSIST_EXISTS;
+    }
+    if (!fs->makeDir(destination.c_str(), false)) {
+      return PERSIST_ERROR;
+    }
+    etl::string<MAX_INSTRUMENT_FILENAME_LENGTH + 16> presetName(name.c_str());
+    presetName.append(".dspreset");
+    bool ok = !presetName.is_truncated() &&
+              FileSystemPath::JoinPath(destination.c_str(), presetName.c_str(),
+                                       target) &&
+              fs->CopyFile(sampler->GetPresetPath(), target.c_str());
+    uint32_t sampleTotal = 0;
+    for (uint16_t index = 0; ok && index < DecentSamplerPreset::MaxZones;
+         ++index) {
+      char sampleName[20];
+      npf_snprintf(sampleName, sizeof(sampleName), "sample%03u.wav", index);
+      if (FileSystemPath::JoinPath(sourceDir.c_str(), sampleName, source) &&
+          fs->exists(source.c_str()))
+        ++sampleTotal;
+    }
+    uint32_t copied = 0;
+    for (uint16_t index = 0; ok && index < DecentSamplerPreset::MaxZones;
+         ++index) {
+      char sampleName[20];
+      npf_snprintf(sampleName, sizeof(sampleName), "sample%03u.wav", index);
+      ok = FileSystemPath::JoinPath(sourceDir.c_str(), sampleName, source) &&
+           FileSystemPath::JoinPath(destination.c_str(), sampleName, target);
+      if (ok && fs->exists(source.c_str())) {
+        ok = fs->CopyFile(source.c_str(), target.c_str());
+        if (ok)
+          InstrumentTransferProgress::Update(++copied, sampleTotal);
+      }
+    }
+    if (!ok) {
+      DeleteDirectoryTree_(destination.c_str(), 0);
+      return PERSIST_ERROR;
+    }
+    return PERSIST_SAVED;
+  }
+
   // Add .pti extension to the filename
   etl::string<MAX_INSTRUMENT_FILENAME_LENGTH> filename = name;
   filename.append(INSTRUMENT_FILE_EXTENSION);
@@ -506,6 +558,12 @@ PersistencyResult PersistencyService::ExportInstrument(
 }
 
 InstrumentType PersistencyService::DetectInstrumentType(const char *name) {
+  if (name != nullptr) {
+    const char *extension = std::strrchr(name, '.');
+    if (extension != nullptr && !strcasecmp(extension, ".dspreset")) {
+      return IT_MSAMPLER;
+    }
+  }
   FileSystemPath::PathString instrumentPath;
   if (!resolveInstrumentPath(name, instrumentPath)) {
     Trace::Error("PERSISTENCYSERVICE: Could not resolve instrument path: %s",
@@ -560,6 +618,12 @@ PersistencyResult PersistencyService::ImportInstrument(I_Instrument *instrument,
     Trace::Error("PERSISTENCYSERVICE: Could not resolve instrument path: %s",
                  name ? name : "(null)");
     return PERSIST_ERROR;
+  }
+
+  if (instrument != nullptr && instrument->GetType() == IT_MSAMPLER) {
+    auto *msampler = static_cast<MSamplerInstrument *>(instrument);
+    return msampler->LoadPreset(instrumentPath.c_str()) ? PERSIST_LOADED
+                                                        : PERSIST_ERROR;
   }
 
   // Load the XML document

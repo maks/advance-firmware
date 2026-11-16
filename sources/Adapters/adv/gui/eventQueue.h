@@ -12,6 +12,7 @@
 #define _EVENT_QUEUE_
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "stm32h7xx.h"
 
 enum EventType {
   REDRAW,
@@ -31,6 +32,7 @@ public:
   Event(EventType type, uint16_t buttonChangeMask, uint16_t buttonMask)
       : type_(type), buttonChangeMask_(buttonChangeMask),
         buttonMask_(buttonMask) {}
+  uint32_t queuedCycles_ = DWT->CYCCNT;
   EventType type_;
   uint16_t buttonChangeMask_ = 0;
   uint16_t buttonMask_ = 0;

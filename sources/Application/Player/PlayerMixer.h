@@ -45,7 +45,8 @@ public:
   void OnPlayerStop();
 
   void StartInstrument(int channel, I_Instrument *instrument,
-                       unsigned char note, InstrumentStartMode mode);
+                       unsigned char note, InstrumentStartMode mode,
+                       uint8_t velocity = 127);
   void ReleaseChannel(int channel);
   void ReleaseInstrument(int channel);
   void StopInstrument(int channel);

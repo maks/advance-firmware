@@ -19,6 +19,8 @@ public:
   int Write(const void *ptr, int size, int nmemb) override;
   void Seek(long offset, int whence) override;
   long Tell() override;
+  bool Seek64(uint64_t offset, int whence) override;
+  uint64_t Tell64() override;
   int Error() override;
   bool Sync() override;
   void Dispose() override;

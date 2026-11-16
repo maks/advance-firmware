@@ -26,7 +26,7 @@ public:
   virtual ~PlayerChannel();
   virtual bool Render(AudioSample *buffer, int samplecount);
   void StartInstrument(I_Instrument *instr, unsigned char note,
-                       InstrumentStartMode mode);
+                       InstrumentStartMode mode, uint8_t velocity = 127);
   void ReleaseChannel();
   void ReleaseInstrument();
   void StopInstrument();
