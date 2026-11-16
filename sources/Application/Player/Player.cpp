@@ -12,7 +12,6 @@
  */
 
 #include "Player.h"
-#include "Application/Views/DslibraryExtractor.h"
 #include "Application/Effects/DelayOutputEffect.h"
 #include "Application/Instruments/I_Instrument.h"
 #include "Application/Instruments/SampleInstrument.h"
@@ -22,6 +21,7 @@
 #include "Application/Player/TablePlayback.h"
 #include "Application/Utils/char.h"
 #include "Application/Views/BaseClasses/ViewEvent.h"
+#include "Application/Views/DslibraryExtractor.h"
 #include "PlayerMixer.h"
 #include "Services/Midi/MidiService.h"
 #include "System/Console/n_assert.h"

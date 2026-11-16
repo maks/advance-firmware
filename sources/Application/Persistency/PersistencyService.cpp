@@ -19,11 +19,11 @@
 #include "Foundation/Types/Types.h"
 #include "Persistent.h"
 #include "System/Console/Trace.h"
+#include "System/Console/nanoprintf.h"
 #include "System/FileSystem/FileSystem.h"
 #include "System/FileSystem/PathUtils.h"
 #include "System/io/Status.h"
 #include <cstring>
-#include <nanoprintf.h>
 #include <new>
 
 #define PROJECT_STATE_FILE "/.current"

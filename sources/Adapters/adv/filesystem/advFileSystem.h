@@ -51,7 +51,7 @@ private:
 class advFileSystem : public FileSystem {
 public:
   advFileSystem(); // OK
-  virtual ~advFileSystem() {};
+  virtual ~advFileSystem(){};
   virtual FileHandle Open(const char *name, const char *mode) override;
   virtual bool ListDirectory(const char *absoluteDir,
                              etl::ivector<FileSystemEntry> *entries,
