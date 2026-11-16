@@ -158,8 +158,9 @@ void KeyboardModalView::ActivateKey() {
     return;
   }
   if (row_ == 5 && column_ == 0) {
-    if (text_.empty() || text_.find_first_not_of(' ') == etl::istring::npos) {
-      error_ = projectName_ ? "ENTER A PROJECT NAME" : "ENTER TEXT";
+    if (projectName_ &&
+        (text_.empty() || text_.find_first_not_of(' ') == etl::istring::npos)) {
+      error_ = "ENTER A PROJECT NAME";
     } else if (projectName_ && !IsValidProjectName()) {
       error_ = "NO TRAILING DOT OR SPACE";
     } else {

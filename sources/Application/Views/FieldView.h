@@ -36,6 +36,7 @@ public:
   // name + buttons)
 
 private:
+  void OnKeyboardTextEntered(View &, ModalView &dialog);
   UIField *focus_;
 };
 
