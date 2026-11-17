@@ -15,9 +15,9 @@ uint32_t ModalView::nextInstanceId_ = 0;
 
 ModalView::ModalView(View &v)
     : View(v.w_, v.viewData_), instanceId_(++nextInstanceId_), finished_(false),
-      returnCode_(0){};
+      returnCode_(0) {};
 
-ModalView::~ModalView(){};
+ModalView::~ModalView() {};
 
 int ModalView::GetReturnCode() { return returnCode_; };
 uint32_t ModalView::GetInstanceId() const { return instanceId_; };
@@ -73,10 +73,8 @@ void ModalView::SetWindow(int width, int height, uint8_t font) {
   static_cast<AppWindow &>(w_).SetOverlayFont(font);
   const int16_t originX = int16_t(
       8 + std::max(0, (720 / metrics->width - 32) / 2) * metrics->width);
-  const int16_t originY =
-      int16_t((std::max(0, (720 / metrics->height - 24) / 2) +
-               std::max(0, (24 - (height + 4)) / 2)) *
-              metrics->height);
+  const int16_t originY = int16_t((720 - (height + 4) * metrics->height) / 2 -
+                                  (top_ - 2) * metrics->height);
   static_cast<AppWindow &>(w_).SetOverlayOrigin(originX, originY);
   static_cast<AppWindow &>(w_).SetOverlayBounds(
       {int16_t(originX + (left_ - 2) * metrics->width),

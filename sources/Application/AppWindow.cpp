@@ -345,16 +345,7 @@ void RequireDrawingLayout(bool ok) {
 }
 TextRegionInfo OverlayTextRegion(uint8_t fontId, int16_t originX = 8,
                                  int16_t originY = 0) {
-  const TextFontInfo *font = text_font(fontId);
-  if (!font)
-    font = text_font(TEXT_FONT_NORMAL);
-  const TextRegion definition = {uint16_t(originX), uint16_t(originY),
-                                 uint16_t(32 * font->width),
-                                 uint16_t(24 * font->height), fontId};
-  TextRegionLayout layout{};
-  const bool planned = text_region_plan(&layout, &definition, 1);
-  NAssert(planned);
-  return layout.regions[0];
+  return text_overlay_region(fontId, uint16_t(originX), uint16_t(originY));
 }
 } // namespace
 
@@ -1336,7 +1327,7 @@ void AppWindow::AnimationUpdate() {
   }
 }
 
-void AppWindow::LayoutChildren(){};
+void AppWindow::LayoutChildren() {};
 
 void AppWindow::Update(Observable &o, I_ObservableData *d) {
   if (d && (uintptr_t)d == (uintptr_t)FourCC::VarProjectName) {

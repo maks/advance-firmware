@@ -99,6 +99,32 @@ static inline bool text_region_plan(TextRegionLayout *out,
   return true;
 }
 
+// Overlay storage is a fixed logical grid. Its origin may place unused cells
+// outside the display; the overlay bounds clip drawing to the visible window.
+static inline TextRegionInfo
+text_overlay_region(uint8_t font_id, uint16_t origin_x, uint16_t origin_y) {
+  const TextFontInfo *font = text_font(font_id);
+  if (!font) {
+    font_id = TEXT_FONT_NORMAL;
+    font = text_font(font_id);
+  }
+  TextRegionInfo region = {
+      .definition = {.x = origin_x,
+                     .y = origin_y,
+                     .width = (uint16_t)(32 * font->width),
+                     .height = (uint16_t)(24 * font->height),
+                     .font = font_id},
+      .offset = 0,
+      .glyph_stride = (uint16_t)(font->width * font->height),
+      .pixel_offset = (uint32_t)origin_y * 720 + origin_x,
+      .glyph_width = font->width,
+      .glyph_height = font->height,
+      .columns = 32,
+      .rows = 24,
+  };
+  return region;
+}
+
 // Submit complete cells in local coordinates. Invalid starts are ignored;
 // characters past the right edge are ignored without partial glyph rendering.
 static inline uint16_t text_region_write(const TextRegionInfo *region,
