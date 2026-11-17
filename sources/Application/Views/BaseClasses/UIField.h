@@ -54,7 +54,9 @@ public:
   virtual bool HasVariable() const;
 
   virtual bool GetKeyboardText(etl::string<MAX_VARIABLE_STRING_LENGTH> &text,
-                               uint8_t &maxLength) { return false; }
+                               uint8_t &maxLength) {
+    return false;
+  }
   virtual void SetKeyboardText(const char *text) {}
 
 protected:

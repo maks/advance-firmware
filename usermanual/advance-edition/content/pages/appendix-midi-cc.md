@@ -9,6 +9,8 @@ template: page
 
 CC 7 controls the mixer level for the matching sequencer channel. MIDI channel 1 controls sequencer channel 1, MIDI channel 2 controls sequencer channel 2, and so on through channel 8. MIDI channels 9–16 do not control mixer channel levels. Values 0–127 scale across the mixer's full level range. This works independently of `MIDI CHANNEL MAP`.
 
+CC 7 uses pickup: it starts changing the mixer level when its incoming value reaches or crosses the current fader value. Moving the fader manually makes the controller pick up the new value again.
+
 ### Voice parameters
 
 Incoming MIDI control changes edit the Voice settings of an instrument. When song channels have MIDI input assignments, the MIDI channel's selected program chooses the instrument. When no song channels have MIDI input assignments, MIDI channels 1–8 control the instrument currently playing on sequencer channels 1–8 respectively; other channels are ignored. Changes affect every voice using that instrument and are saved with the project.

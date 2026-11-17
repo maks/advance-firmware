@@ -31,7 +31,7 @@ MidiInDevice::MidiInDevice(const char *name)
   }
 };
 
-MidiInDevice::~MidiInDevice() {};
+MidiInDevice::~MidiInDevice(){};
 
 bool MidiInDevice::Init() { return initDriver(); };
 
@@ -117,8 +117,8 @@ void MidiInDevice::onMidiTempoTick() {
   NotifyObservers();
 };
 
-void MidiInDevice::queueEvent(MidiEvent &event) {
-  // TODO: queue the event
+void MidiInDevice::queueEvent(MidiEvent &event){
+    // TODO: queue the event
 };
 
 void MidiInDevice::onDriverMessage(MidiMessage &message) {
@@ -129,8 +129,8 @@ void MidiInDevice::onDriverMessage(MidiMessage &message) {
   }
 };
 
-void MidiInDevice::Trigger() {
-  // No-op: events are handled immediately in onDriverMessage.
+void MidiInDevice::Trigger(){
+    // No-op: events are handled immediately in onDriverMessage.
 };
 
 void MidiInDevice::treatChannelEvent(MidiMessage &event) {
@@ -217,9 +217,9 @@ void MidiInDevice::treatChannelEvent(MidiMessage &event) {
     }
     Player *player = Player::GetInstance();
     if (player) {
-      player->ApplyMidiChannelCC(static_cast<uint8_t>(midiChannel),
-                                 static_cast<uint8_t>(cc),
-                                 static_cast<uint8_t>(data));
+      player->ApplyMidiChannelCC(
+          getInputSource(), static_cast<uint8_t>(midiChannel),
+          static_cast<uint8_t>(cc), static_cast<uint8_t>(data));
       player->ApplyMidiVoiceCC(
           getInputSource(), static_cast<uint8_t>(midiChannel),
           static_cast<uint8_t>(GetProgramForChannel(midiChannel)),
@@ -261,8 +261,8 @@ void MidiInDevice::SetProgramForChannel(int midiChannel, uint8_t program) {
     if (channelPrograms_[midiChannel] != program) {
       Player *player = Player::GetExistingInstance();
       if (player) {
-        player->ResetMidiVoicePickup(getInputSource(),
-                                     static_cast<uint8_t>(midiChannel));
+        player->ResetMidiPickups(getInputSource(),
+                                 static_cast<uint8_t>(midiChannel));
       }
     }
     channelPrograms_[midiChannel] = program;

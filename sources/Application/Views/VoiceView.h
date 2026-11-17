@@ -44,7 +44,7 @@ public:
   virtual void ProcessButtonMask(unsigned short mask, bool pressed) override;
   virtual void DrawView() override;
   void AnimationUpdate() override;
-  virtual void OnPlayerUpdate(PlayerEventType, unsigned int) {};
+  virtual void OnPlayerUpdate(PlayerEventType, unsigned int){};
   virtual void OnFocus() override;
   enum class GraphKind : uint8_t { Voice = 0, Filter, Amp, LFO1, LFO2, Fx };
   enum class GraphSection : uint8_t {
