@@ -217,6 +217,9 @@ void MidiInDevice::treatChannelEvent(MidiMessage &event) {
     }
     Player *player = Player::GetInstance();
     if (player) {
+      player->ApplyMidiChannelCC(static_cast<uint8_t>(midiChannel),
+                                 static_cast<uint8_t>(cc),
+                                 static_cast<uint8_t>(data));
       player->ApplyMidiVoiceCC(
           getInputSource(), static_cast<uint8_t>(midiChannel),
           static_cast<uint8_t>(GetProgramForChannel(midiChannel)),

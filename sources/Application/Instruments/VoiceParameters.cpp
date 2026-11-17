@@ -142,7 +142,7 @@ void VoiceParameters::ApplyMidiCC(uint8_t cc, uint8_t value,
     int32_t max;
   };
   const Mapping mappings[] = {
-      {7, FourCC::VoiceAmp, 0, 255},
+      {11, FourCC::VoiceAmp, 0, 255},
       {10, FourCC::VoicePan, 0, 255},
       {14, FourCC::VoiceTriggerLength, 0, 96},
       {15, FourCC::VoiceBandpassCutoff, 0, 255},

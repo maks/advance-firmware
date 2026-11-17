@@ -205,6 +205,7 @@ public:
                     uint8_t instrumentIndex, uint8_t note, uint8_t velocity);
   void ApplyMidiVoiceCC(MidiInputSource inputSource, uint8_t midiChannel,
                         uint8_t program, uint8_t cc, uint8_t value);
+  void ApplyMidiChannelCC(uint8_t midiChannel, uint8_t cc, uint8_t value);
   void ResetMidiVoicePickup(MidiInputSource inputSource, uint8_t midiChannel);
   void StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
                     uint8_t note);

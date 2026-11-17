@@ -1,17 +1,25 @@
 ---
-title: MIDI Voice CC Reference
+title: MIDI CC Reference
 template: page
 ---
 
-## MIDI Voice CC Reference
+## MIDI CC Reference
+
+### Mixer channel level
+
+CC 7 controls the mixer level for the matching sequencer channel. MIDI channel 1 controls sequencer channel 1, MIDI channel 2 controls sequencer channel 2, and so on through channel 8. MIDI channels 9–16 do not control mixer channel levels. Values 0–127 scale across the mixer's full level range. This works independently of `MIDI CHANNEL MAP`.
+
+### Voice parameters
 
 Incoming MIDI control changes edit the Voice settings of an instrument. When song channels have MIDI input assignments, the MIDI channel's selected program chooses the instrument. When no song channels have MIDI input assignments, MIDI channels 1–8 control the instrument currently playing on sequencer channels 1–8 respectively; other channels are ignored. Changes affect every voice using that instrument and are saved with the project.
+
+Voice parameter CCs use pickup: a CC must reach or cross the current parameter value before it starts changing that value. Editing the parameter on screen makes the CC pick up the new value again.
 
 CC values span 0–127 and are scaled to each field's full range. Filter envelope amount is centered at CC value 64. For a field with a small set of choices, the range is divided across those choices. LFO rate controls the sync division when the LFO is in sync mode and the speed otherwise. LFO depth scales to the range of its current target. Selecting a target already used by the other LFO clears the other LFO's target.
 
 | CC | Voice field | CC | Voice field |
 |---:|---|---:|---|
-| 7 | Amp level | 10 | Pan |
+| 10 | Pan | 11 | Amp level |
 | 14 | Trigger length | 15 | Bandpass base |
 | 16 | Bandpass width | 17 | Filter type |
 | 18 | Filter envelope amount | 19 | Filter attack |
@@ -30,4 +38,4 @@ CC values span 0–127 and are scaled to each field's full range. Filter envelop
 | 73 | Amp attack | 74 | Filter cutoff |
 | 75 | Amp decay | | |
 
-Changing an insert effect type resets its amount to the effect's default, as it does on the Voice screen. Instruments without the shared Voice screen do not respond to these CCs.
+Changing an insert effect type resets its amount to the effect's default, as it does on the Voice screen. Instruments without the shared Voice screen do not respond to voice parameter CCs. CC 7 controls mixer channel level; CC 11 controls voice amp level.

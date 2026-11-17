@@ -46,6 +46,7 @@ public:
   int GetMasterVolume();
   int GetLineInMixLevel();
   int GetChannelVolume(int channel);
+  void SetChannelVolume(int channel, int volume);
   int GetChannelFXSend(int channel, int fx);
   int GetFXReturnVolume(int fx);
   int GetFXSend(int sourceFx, int destinationFx);

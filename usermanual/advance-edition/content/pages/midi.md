@@ -46,6 +46,7 @@ picoTracker currently supports the following MIDI message types:
 - **Note On**: Triggers instrument playback on a song channel assigned to the incoming MIDI channel.
 - **Note Off**: Releases the corresponding note that was previously triggered by a Note On message. The instrument's release setting controls how long the note fades or holds afterward.
 - **Program Change**: Selects the same-numbered instrument for subsequent notes on that MIDI channel.
+- **Control Change**: CC 7 controls the matching mixer channel level, and the voice parameter CCs are listed in the [MIDI CC Reference](appendix-midi-cc.html).
 - **Start**: Starts playback when receiving a MIDI Start message.
 - **Stop**: Stops playback when receiving a MIDI Stop message.
 
@@ -53,7 +54,6 @@ The following message types are recognized but **not** implemented yet:
 
 - **Clock**: Synchronizes picoTracker's tempo to an external MIDI clock source.
 - **Aftertouch** (Polyphonic Pressure)
-- **Control Change** (CC)
 - **Channel Aftertouch** (Channel Pressure)
 - **Pitch Bend**
 - **Continue**

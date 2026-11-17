@@ -48,7 +48,7 @@ int MidiVoicePickupSourceIndex(MidiInputSource inputSource) {
 }
 
 int MidiVoicePickupCCIndex(uint8_t cc) {
-  if (cc == 7) {
+  if (cc == 11) {
     return 0;
   }
   if (cc == 10) {
@@ -2039,6 +2039,18 @@ void Player::ApplyMidiVoiceCC(MidiInputSource inputSource, uint8_t midiChannel,
       midiVoicePickup[MidiVoicePickupSourceIndex(inputSource)][midiChannel]
                      [ccIndex];
   voice->ApplyMidiCC(cc, value, &pickup, static_cast<uint8_t>(instrumentIndex));
+}
+
+void Player::ApplyMidiChannelCC(uint8_t midiChannel, uint8_t cc,
+                                uint8_t value) {
+  if (!project_ || midiChannel >= SONG_CHANNEL_COUNT || cc != 7 ||
+      value > 127) {
+    return;
+  }
+
+  const int volume =
+      (static_cast<int>(value) * Project::MixerVolumeMaximum + 63) / 127;
+  project_->SetChannelVolume(midiChannel, volume);
 }
 
 void Player::ResetMidiVoicePickup(MidiInputSource inputSource,
