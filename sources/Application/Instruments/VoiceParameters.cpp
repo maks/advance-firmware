@@ -130,7 +130,8 @@ void VoiceParameters::Reset() {
   }
 }
 
-void VoiceParameters::ApplyMidiCC(uint8_t cc, uint8_t value) {
+void VoiceParameters::ApplyMidiCC(uint8_t cc, uint8_t value,
+                                  MidiVoicePickup *pickup, uint8_t instrument) {
   if (value > 127) {
     return;
   }
@@ -177,7 +178,10 @@ void VoiceParameters::ApplyMidiCC(uint8_t cc, uint8_t value) {
                 ? (value < 64 ? static_cast<int32_t>(value) - 64
                               : (static_cast<int32_t>(value) - 64) * 64 / 63)
                 : scale(mapping.min, mapping.max);
-        variable->SetInt(scaled);
+        if (!pickup || pickup->Accept(scaled, variable->GetInt(), mapping.min,
+                                      mapping.max, instrument)) {
+          variable->SetInt(scaled);
+        }
       }
       return;
     }
@@ -189,34 +193,64 @@ void VoiceParameters::ApplyMidiCC(uint8_t cc, uint8_t value) {
   const size_t slot = (cc - 30) / 6;
   const uint8_t field = (cc - 30) % 6;
   const LFOConfig config = lfo->Get(slot);
+  const auto shouldApply = [&](int32_t scaled, int32_t current, int32_t min,
+                               int32_t max) {
+    return !pickup || pickup->Accept(scaled, current, min, max, instrument);
+  };
   switch (field) {
-  case 0:
-    lfo->SetTarget(slot, static_cast<LFOTarget>(scale(
-                             0, static_cast<int32_t>(LFOTarget::Last) - 1)));
+  case 0: {
+    const int32_t max = static_cast<int32_t>(LFOTarget::Last) - 1;
+    const int32_t scaled = scale(0, max);
+    if (shouldApply(scaled, static_cast<int32_t>(config.target_), 0, max)) {
+      lfo->SetTarget(slot, static_cast<LFOTarget>(scaled));
+    }
     break;
-  case 1:
-    lfo->SetShape(slot, static_cast<LFOShape>(scale(
-                            0, static_cast<int32_t>(LFOShape::Last) - 1)));
+  }
+  case 1: {
+    const int32_t max = static_cast<int32_t>(LFOShape::Last) - 1;
+    const int32_t scaled = scale(0, max);
+    if (shouldApply(scaled, static_cast<int32_t>(config.shape_), 0, max)) {
+      lfo->SetShape(slot, static_cast<LFOShape>(scaled));
+    }
     break;
-  case 2:
-    lfo->SetTriggerMode(slot, static_cast<LFOTriggerMode>(scale(0, 1)));
+  }
+  case 2: {
+    const int32_t scaled = scale(0, 1);
+    if (shouldApply(scaled, static_cast<int32_t>(config.triggerMode_), 0, 1)) {
+      lfo->SetTriggerMode(slot, static_cast<LFOTriggerMode>(scaled));
+    }
     break;
-  case 3:
-    lfo->SetRateMode(slot, static_cast<LFORateMode>(scale(0, 1)));
+  }
+  case 3: {
+    const int32_t scaled = scale(0, 1);
+    if (shouldApply(scaled, static_cast<int32_t>(config.rateMode_), 0, 1)) {
+      lfo->SetRateMode(slot, static_cast<LFORateMode>(scaled));
+    }
     break;
+  }
   case 4:
     if (config.rateMode_ == LFORateMode::Sync) {
-      lfo->SetSyncIndex(
-          slot, scale(0, static_cast<int32_t>(GetLFOSyncDivisionCount()) - 1));
+      const int32_t max = static_cast<int32_t>(GetLFOSyncDivisionCount()) - 1;
+      const int32_t scaled = scale(0, max);
+      if (shouldApply(scaled, config.syncIndex_, 0, max)) {
+        lfo->SetSyncIndex(slot, scaled);
+      }
     } else {
-      lfo->SetRateValue(slot, scale(0, 255));
+      const int32_t scaled = scale(0, 255);
+      if (shouldApply(scaled, config.rate_, 0, 255)) {
+        lfo->SetRateValue(slot, scaled);
+      }
     }
     break;
   case 5: {
     int min = 0;
     int max = 0;
     if (GetLFOTargetValueRange(config.target_, min, max)) {
-      lfo->SetDepth(slot, scale(0, std::max(-min, max)));
+      const int32_t depthMax = std::max(-min, max);
+      const int32_t scaled = scale(0, depthMax);
+      if (shouldApply(scaled, config.depth_, 0, depthMax)) {
+        lfo->SetDepth(slot, scaled);
+      }
     }
     break;
   }

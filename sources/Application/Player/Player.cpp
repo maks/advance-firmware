@@ -14,6 +14,7 @@
 #include "Player.h"
 #include "Application/Effects/DelayOutputEffect.h"
 #include "Application/Instruments/I_Instrument.h"
+#include "Application/Instruments/MidiVoicePickup.h"
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SampleSourceInstrument.h"
 #include "Application/Mixer/MixerService.h"
@@ -34,6 +35,43 @@
 #include <string.h>
 
 namespace {
+
+constexpr size_t MidiVoicePickupSourceCount = 2;
+constexpr size_t MidiVoicePickupCCCount = 35;
+
+PICOTRACKER_D2_BUFFER MidiVoicePickup
+    midiVoicePickup[MidiVoicePickupSourceCount][MIDI_INPUT_CHANNEL_COUNT]
+                   [MidiVoicePickupCCCount];
+
+int MidiVoicePickupSourceIndex(MidiInputSource inputSource) {
+  return inputSource == MidiInputSource::Usb ? 1 : 0;
+}
+
+int MidiVoicePickupCCIndex(uint8_t cc) {
+  if (cc == 7) {
+    return 0;
+  }
+  if (cc == 10) {
+    return 1;
+  }
+  if (cc >= 14 && cc <= 41) {
+    return 2 + cc - 14;
+  }
+  if (cc >= 71 && cc <= 75) {
+    return 30 + cc - 71;
+  }
+  return -1;
+}
+
+void ResetAllMidiVoicePickup() {
+  for (auto &source : midiVoicePickup) {
+    for (auto &channel : source) {
+      for (MidiVoicePickup &pickup : channel) {
+        pickup.Reset();
+      }
+    }
+  }
+}
 
 FourCC GetReverbCommandParameterId(TrackerCommand command) {
   switch (command) {
@@ -83,6 +121,7 @@ int32_t DecodeRetriggerOffset(int32_t value) {
 
 Player::Player() : Observable(&observers_), mixer_() {
   registerPlayerProfiles();
+  ResetAllMidiVoicePickup();
 
   isRunning_ = false;
   viewData_ = 0;
@@ -126,6 +165,7 @@ bool Player::Init(Project *project, ViewData *viewData) {
 }
 
 void Player::BindProject(Project *project, ViewData *viewData) {
+  ResetAllMidiVoicePickup();
   viewData_ = viewData;
   project_ = project;
   midiInputNoteState_.Clear();
@@ -1948,8 +1988,8 @@ void Player::PlayMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
   }
 }
 
-void Player::ApplyMidiVoiceCC(uint8_t midiChannel, uint8_t program, uint8_t cc,
-                              uint8_t value) {
+void Player::ApplyMidiVoiceCC(MidiInputSource inputSource, uint8_t midiChannel,
+                              uint8_t program, uint8_t cc, uint8_t value) {
   if (!project_ || midiChannel >= MIDI_INPUT_CHANNEL_COUNT || value > 127) {
     return;
   }
@@ -1990,7 +2030,26 @@ void Player::ApplyMidiVoiceCC(uint8_t midiChannel, uint8_t program, uint8_t cc,
   if (!voice) {
     return;
   }
-  voice->ApplyMidiCC(cc, value);
+  const int ccIndex = MidiVoicePickupCCIndex(cc);
+  if (ccIndex < 0) {
+    voice->ApplyMidiCC(cc, value);
+    return;
+  }
+  MidiVoicePickup &pickup =
+      midiVoicePickup[MidiVoicePickupSourceIndex(inputSource)][midiChannel]
+                     [ccIndex];
+  voice->ApplyMidiCC(cc, value, &pickup, static_cast<uint8_t>(instrumentIndex));
+}
+
+void Player::ResetMidiVoicePickup(MidiInputSource inputSource,
+                                  uint8_t midiChannel) {
+  if (midiChannel >= MIDI_INPUT_CHANNEL_COUNT) {
+    return;
+  }
+  for (MidiVoicePickup &pickup :
+       midiVoicePickup[MidiVoicePickupSourceIndex(inputSource)][midiChannel]) {
+    pickup.Reset();
+  }
 }
 
 void Player::StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
@@ -2013,6 +2072,9 @@ void Player::StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
 }
 
 void Player::ReleaseMidiInputSource(MidiInputSource inputSource) {
+  for (uint8_t channel = 0; channel < MIDI_INPUT_CHANNEL_COUNT; ++channel) {
+    ResetMidiVoicePickup(inputSource, channel);
+  }
   mixer_.Lock();
   const uint16_t releasedChannelMask =
       midiNoteTracker_.clearInputSource(inputSource);
@@ -2041,6 +2103,8 @@ void Player::OnMidiInputAssignmentChanged(uint8_t songChannel) {
   if (songChannel >= SONG_CHANNEL_COUNT) {
     return;
   }
+
+  ResetAllMidiVoicePickup();
 
   mixer_.Lock();
   mixer_.StopChannel(songChannel);

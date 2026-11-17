@@ -218,7 +218,7 @@ void MidiInDevice::treatChannelEvent(MidiMessage &event) {
     Player *player = Player::GetInstance();
     if (player) {
       player->ApplyMidiVoiceCC(
-          static_cast<uint8_t>(midiChannel),
+          getInputSource(), static_cast<uint8_t>(midiChannel),
           static_cast<uint8_t>(GetProgramForChannel(midiChannel)),
           static_cast<uint8_t>(cc), static_cast<uint8_t>(data));
     }
@@ -255,6 +255,13 @@ void MidiInDevice::treatChannelEvent(MidiMessage &event) {
 // MIDI program selection uses the fixed program-to-instrument identity mapping.
 void MidiInDevice::SetProgramForChannel(int midiChannel, uint8_t program) {
   if (midiChannel >= 0 && midiChannel < 16) {
+    if (channelPrograms_[midiChannel] != program) {
+      Player *player = Player::GetExistingInstance();
+      if (player) {
+        player->ResetMidiVoicePickup(getInputSource(),
+                                     static_cast<uint8_t>(midiChannel));
+      }
+    }
     channelPrograms_[midiChannel] = program;
     // Trace::Log("MIDI", "Selected program %d on MIDI channel %d", program,
     //            midiChannel);

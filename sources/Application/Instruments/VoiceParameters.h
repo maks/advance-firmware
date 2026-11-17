@@ -15,6 +15,7 @@
 #include "Foundation/Variables/Variable.h"
 #include "Foundation/Variables/VariableContainer.h"
 #include "LFOSettings.h"
+#include "MidiVoicePickup.h"
 
 static constexpr size_t kVoiceParameterBaseVariableCount = 19;
 static constexpr size_t kVoiceParameterVariableCount =
@@ -54,7 +55,8 @@ public:
   bool ValuesDifferFrom(const ValueSnapshot &snapshot);
   void CopyFrom(const VoiceParameters &other);
   void Reset();
-  void ApplyMidiCC(uint8_t cc, uint8_t value);
+  void ApplyMidiCC(uint8_t cc, uint8_t value, MidiVoicePickup *pickup = nullptr,
+                   uint8_t instrument = 0);
   LFOSettings *GetLFOSettings() { return &lfoSettings_; }
   const LFOSettings *GetLFOSettings() const { return &lfoSettings_; }
 
