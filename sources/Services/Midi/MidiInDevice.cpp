@@ -31,7 +31,7 @@ MidiInDevice::MidiInDevice(const char *name)
   }
 };
 
-MidiInDevice::~MidiInDevice(){};
+MidiInDevice::~MidiInDevice() {};
 
 bool MidiInDevice::Init() { return initDriver(); };
 
@@ -117,8 +117,8 @@ void MidiInDevice::onMidiTempoTick() {
   NotifyObservers();
 };
 
-void MidiInDevice::queueEvent(MidiEvent &event){
-    // TODO: queue the event
+void MidiInDevice::queueEvent(MidiEvent &event) {
+  // TODO: queue the event
 };
 
 void MidiInDevice::onDriverMessage(MidiMessage &message) {
@@ -129,8 +129,8 @@ void MidiInDevice::onDriverMessage(MidiMessage &message) {
   }
 };
 
-void MidiInDevice::Trigger(){
-    // No-op: events are handled immediately in onDriverMessage.
+void MidiInDevice::Trigger() {
+  // No-op: events are handled immediately in onDriverMessage.
 };
 
 void MidiInDevice::treatChannelEvent(MidiMessage &event) {
@@ -215,7 +215,13 @@ void MidiInDevice::treatChannelEvent(MidiMessage &event) {
     if (dumpEvents_) {
       Trace::Log("EVENT", "midi:cc:%d:%d", cc, data);
     }
-    // TODO: handle CC
+    Player *player = Player::GetInstance();
+    if (player) {
+      player->ApplyMidiVoiceCC(
+          static_cast<uint8_t>(midiChannel),
+          static_cast<uint8_t>(GetProgramForChannel(midiChannel)),
+          static_cast<uint8_t>(cc), static_cast<uint8_t>(data));
+    }
   } break;
 
   case MidiMessage::MIDI_PROGRAM_CHANGE: {

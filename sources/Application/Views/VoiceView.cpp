@@ -829,6 +829,7 @@ VoiceView::VoiceView(GUIWindow &w, ViewData *data)
 VoiceView::~VoiceView() {}
 
 void VoiceView::Reset() {
+  displayedValuesValid_ = false;
   lastFocusIndex_ = 0;
   graphKind_ = GraphKind::Voice;
   graphSection_ = GraphSection::None;
@@ -1457,6 +1458,14 @@ void VoiceView::ProcessButtonMask(unsigned short mask, bool pressed) {
 }
 
 void VoiceView::DrawView() {
+  InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
+  VoiceParameters *parameters =
+      bank ? bank->GetVoiceParameters(viewData_->currentInstrumentID_)
+           : nullptr;
+  displayedValuesValid_ = parameters != nullptr;
+  if (parameters) {
+    parameters->CaptureValues(displayedValues_);
+  }
   Clear();
 
   GUITextProperties props;
@@ -1478,6 +1487,18 @@ void VoiceView::DrawView() {
   drawSectionHeaders();
   drawLFOTargetMarkers();
   drawMap();
+}
+
+void VoiceView::AnimationUpdate() {
+  ScreenView::AnimationUpdate();
+  InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
+  VoiceParameters *parameters =
+      bank ? bank->GetVoiceParameters(viewData_->currentInstrumentID_)
+           : nullptr;
+  if (parameters && displayedValuesValid_ &&
+      parameters->ValuesDifferFrom(displayedValues_)) {
+    SetDirty(true);
+  }
 }
 
 void VoiceView::OnFocus() {

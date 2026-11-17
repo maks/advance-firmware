@@ -239,3 +239,34 @@ TEST_CASE("Audio Voice auditions every owned parameter") {
   pan->SetInt(pan->GetInt() - 1, false);
   CHECK(parameters.ValuesDifferFrom(snapshot));
 }
+
+TEST_CASE("MIDI voice CCs scale fields and preserve LFO rules") {
+  VoiceParameters voice;
+  VoiceParameters::ValueSnapshot displayed{};
+  voice.CaptureValues(displayed);
+  CHECK_FALSE(voice.ValuesDifferFrom(displayed));
+  voice.ApplyMidiCC(74, 0);
+  CHECK(voice.ValuesDifferFrom(displayed));
+  voice.CaptureValues(displayed);
+  CHECK_FALSE(voice.ValuesDifferFrom(displayed));
+  CHECK(voice.FindVariable(FourCC::VoiceFilterCutoff)->GetInt() == 0);
+  voice.ApplyMidiCC(74, 127);
+  CHECK(voice.FindVariable(FourCC::VoiceFilterCutoff)->GetInt() == 255);
+  voice.ApplyMidiCC(18, 64);
+  CHECK(voice.FindVariable(FourCC::VoiceFilterEnvAmount)->GetInt() == 0);
+  voice.ApplyMidiCC(14, 127);
+  CHECK(voice.FindVariable(FourCC::VoiceTriggerLength)->GetInt() == 96);
+  voice.ApplyMidiCC(30, 127);
+  CHECK(voice.GetLFOSettings()->Get(0).target_ == LFOTarget::VoiceAmpRelease);
+  voice.ApplyMidiCC(36, 127);
+  CHECK(voice.GetLFOSettings()->Get(0).target_ == LFOTarget::None);
+  CHECK(voice.GetLFOSettings()->Get(1).target_ == LFOTarget::VoiceAmpRelease);
+  voice.ApplyMidiCC(39, 127);
+  voice.ApplyMidiCC(40, 127);
+  CHECK(voice.GetLFOSettings()->Get(1).syncIndex_ ==
+        static_cast<int32_t>(GetLFOSyncDivisionCount()) - 1);
+  voice.ApplyMidiCC(41, 127);
+  CHECK(voice.GetLFOSettings()->Get(1).depth_ == 255);
+  voice.ApplyMidiCC(74, 128);
+  CHECK(voice.FindVariable(FourCC::VoiceFilterCutoff)->GetInt() == 255);
+}

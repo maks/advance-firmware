@@ -1948,6 +1948,51 @@ void Player::PlayMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
   }
 }
 
+void Player::ApplyMidiVoiceCC(uint8_t midiChannel, uint8_t program, uint8_t cc,
+                              uint8_t value) {
+  if (!project_ || midiChannel >= MIDI_INPUT_CHANNEL_COUNT || value > 127) {
+    return;
+  }
+  InstrumentBank *bank = project_->GetInstrumentBank();
+  if (!bank) {
+    return;
+  }
+  bool assigned = false;
+  for (uint8_t channel = 0; channel < SONG_CHANNEL_COUNT; ++channel) {
+    assigned |= project_->song_.IsMidiInputChannelAssigned(channel);
+  }
+  int32_t instrumentIndex = program;
+  if (!assigned) {
+    if (midiChannel >= SONG_CHANNEL_COUNT) {
+      return;
+    }
+    I_Instrument *playing = mixer_.GetInstrument(midiChannel);
+    if (!playing) {
+      return;
+    }
+    instrumentIndex = -1;
+    for (int32_t index = 0; index < MAX_INSTRUMENT_COUNT; ++index) {
+      if (bank->GetInstrument(index) == playing) {
+        instrumentIndex = index;
+        break;
+      }
+    }
+  }
+  if (instrumentIndex < 0 || instrumentIndex >= MAX_INSTRUMENT_COUNT) {
+    return;
+  }
+  I_Instrument *instrument = bank->GetInstrument(instrumentIndex);
+  if (!instrument || instrument->IsEmpty() ||
+      !InstrumentTypeUsesModernAudioVoice(instrument->GetType())) {
+    return;
+  }
+  VoiceParameters *voice = bank->GetVoiceParameters(instrumentIndex);
+  if (!voice) {
+    return;
+  }
+  voice->ApplyMidiCC(cc, value);
+}
+
 void Player::StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
                           uint8_t note) {
   if (midiChannel >= MIDI_INPUT_CHANNEL_COUNT || note > 127) {

@@ -96,6 +96,9 @@ Previously granted BSD permissions are preserved. See LICENSING.md.
         <a href="midi-control-surfaces.html">
             <li>MIDI Control Surfaces</li>
         </a>
+        <a href="appendix-midi-cc.html">
+            <li>MIDI Voice CC Reference</li>
+        </a>
         <a href="appendix-remoteui.html">
             <li>Remote Protocol</li>
         </a>

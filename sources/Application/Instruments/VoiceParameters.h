@@ -54,6 +54,7 @@ public:
   bool ValuesDifferFrom(const ValueSnapshot &snapshot);
   void CopyFrom(const VoiceParameters &other);
   void Reset();
+  void ApplyMidiCC(uint8_t cc, uint8_t value);
   LFOSettings *GetLFOSettings() { return &lfoSettings_; }
   const LFOSettings *GetLFOSettings() const { return &lfoSettings_; }
 
