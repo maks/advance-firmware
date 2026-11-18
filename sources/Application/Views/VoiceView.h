@@ -9,6 +9,7 @@
 #ifndef _VOICE_VIEW_H_
 #define _VOICE_VIEW_H_
 
+#include "Application/Instruments/VoiceParameters.h"
 #include "Application/Player/InsertEffectDefinitions.h"
 #include "BaseClasses/UIIntVarField.h"
 #include "BaseClasses/UILFOField.h"
@@ -42,6 +43,7 @@ public:
 
   virtual void ProcessButtonMask(unsigned short mask, bool pressed) override;
   virtual void DrawView() override;
+  void AnimationUpdate() override;
   virtual void OnPlayerUpdate(PlayerEventType, unsigned int){};
   virtual void OnFocus() override;
   enum class GraphKind : uint8_t { Voice = 0, Filter, Amp, LFO1, LFO2, Fx };
@@ -89,6 +91,8 @@ private:
 
   static constexpr size_t VoiceFieldCount = 23;
 
+  VoiceParameters::ValueSnapshot displayedValues_{};
+  bool displayedValuesValid_ = false;
   int lastFocusIndex_;
   etl::vector<UIIntVarField, VoiceFieldCount> intVarField_;
   etl::vector<UIStaticField, 20> staticField_;

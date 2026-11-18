@@ -446,6 +446,18 @@ int Project::GetChannelVolume(int channel) {
   }
 };
 
+void Project::SetChannelVolume(int channel, int volume) {
+  if (channel < 0 || channel >= SONG_CHANNEL_COUNT) {
+    return;
+  }
+
+  WatchedVariable *channelVolumes[SONG_CHANNEL_COUNT] = {
+      &channelVolume1_, &channelVolume2_, &channelVolume3_, &channelVolume4_,
+      &channelVolume5_, &channelVolume6_, &channelVolume7_, &channelVolume8_};
+  channelVolumes[channel]->SetInt(
+      std::clamp(volume, 0, static_cast<int>(MixerVolumeMaximum)));
+}
+
 int Project::GetChannelFXSend(int channel, int fx) {
   switch (fx) {
   case 0:

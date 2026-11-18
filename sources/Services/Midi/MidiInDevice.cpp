@@ -215,7 +215,16 @@ void MidiInDevice::treatChannelEvent(MidiMessage &event) {
     if (dumpEvents_) {
       Trace::Log("EVENT", "midi:cc:%d:%d", cc, data);
     }
-    // TODO: handle CC
+    Player *player = Player::GetInstance();
+    if (player) {
+      player->ApplyMidiChannelCC(
+          getInputSource(), static_cast<uint8_t>(midiChannel),
+          static_cast<uint8_t>(cc), static_cast<uint8_t>(data));
+      player->ApplyMidiVoiceCC(
+          getInputSource(), static_cast<uint8_t>(midiChannel),
+          static_cast<uint8_t>(GetProgramForChannel(midiChannel)),
+          static_cast<uint8_t>(cc), static_cast<uint8_t>(data));
+    }
   } break;
 
   case MidiMessage::MIDI_PROGRAM_CHANGE: {
@@ -249,6 +258,13 @@ void MidiInDevice::treatChannelEvent(MidiMessage &event) {
 // MIDI program selection uses the fixed program-to-instrument identity mapping.
 void MidiInDevice::SetProgramForChannel(int midiChannel, uint8_t program) {
   if (midiChannel >= 0 && midiChannel < 16) {
+    if (channelPrograms_[midiChannel] != program) {
+      Player *player = Player::GetExistingInstance();
+      if (player) {
+        player->ResetMidiPickups(getInputSource(),
+                                 static_cast<uint8_t>(midiChannel));
+      }
+    }
     channelPrograms_[midiChannel] = program;
     // Trace::Log("MIDI", "Selected program %d on MIDI channel %d", program,
     //            midiChannel);

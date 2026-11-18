@@ -239,3 +239,90 @@ TEST_CASE("Audio Voice auditions every owned parameter") {
   pan->SetInt(pan->GetInt() - 1, false);
   CHECK(parameters.ValuesDifferFrom(snapshot));
 }
+
+TEST_CASE("MIDI voice CCs scale fields and preserve LFO rules") {
+  VoiceParameters voice;
+  VoiceParameters::ValueSnapshot displayed{};
+  voice.CaptureValues(displayed);
+  CHECK_FALSE(voice.ValuesDifferFrom(displayed));
+  voice.ApplyMidiCC(74, 0);
+  CHECK(voice.ValuesDifferFrom(displayed));
+  voice.CaptureValues(displayed);
+  CHECK_FALSE(voice.ValuesDifferFrom(displayed));
+  CHECK(voice.FindVariable(FourCC::VoiceFilterCutoff)->GetInt() == 0);
+  voice.ApplyMidiCC(74, 127);
+  CHECK(voice.FindVariable(FourCC::VoiceFilterCutoff)->GetInt() == 255);
+  voice.ApplyMidiCC(18, 64);
+  CHECK(voice.FindVariable(FourCC::VoiceFilterEnvAmount)->GetInt() == 0);
+  voice.ApplyMidiCC(14, 127);
+  CHECK(voice.FindVariable(FourCC::VoiceTriggerLength)->GetInt() == 96);
+  voice.ApplyMidiCC(30, 127);
+  CHECK(voice.GetLFOSettings()->Get(0).target_ == LFOTarget::VoiceAmpRelease);
+  voice.ApplyMidiCC(36, 127);
+  CHECK(voice.GetLFOSettings()->Get(0).target_ == LFOTarget::None);
+  CHECK(voice.GetLFOSettings()->Get(1).target_ == LFOTarget::VoiceAmpRelease);
+  voice.ApplyMidiCC(39, 127);
+  voice.ApplyMidiCC(40, 127);
+  CHECK(voice.GetLFOSettings()->Get(1).syncIndex_ ==
+        static_cast<int32_t>(GetLFOSyncDivisionCount()) - 1);
+  voice.ApplyMidiCC(41, 127);
+  CHECK(voice.GetLFOSettings()->Get(1).depth_ == 255);
+  voice.ApplyMidiCC(74, 128);
+  CHECK(voice.FindVariable(FourCC::VoiceFilterCutoff)->GetInt() == 255);
+}
+
+TEST_CASE("MIDI voice CC pickup waits for the current value and crosses it") {
+  VoiceParameters voice;
+  MidiVoicePickup pickup;
+  Variable *cutoff = voice.FindVariable(FourCC::VoiceFilterCutoff);
+  REQUIRE(cutoff != nullptr);
+  cutoff->SetInt(128, false);
+
+  voice.ApplyMidiCC(74, 0, &pickup, 3);
+  CHECK(cutoff->GetInt() == 128);
+  voice.ApplyMidiCC(74, 40, &pickup, 3);
+  CHECK(cutoff->GetInt() == 128);
+  voice.ApplyMidiCC(74, 70, &pickup, 3);
+  CHECK(cutoff->GetInt() == 141);
+  voice.ApplyMidiCC(74, 80, &pickup, 3);
+  CHECK(cutoff->GetInt() == 161);
+}
+
+TEST_CASE("MIDI voice CC pickup reacquires after a parameter edit") {
+  VoiceParameters voice;
+  MidiVoicePickup pickup;
+  Variable *cutoff = voice.FindVariable(FourCC::VoiceFilterCutoff);
+  REQUIRE(cutoff != nullptr);
+  cutoff->SetInt(64, false);
+
+  voice.ApplyMidiCC(74, 0, &pickup, 3);
+  voice.ApplyMidiCC(74, 20, &pickup, 3);
+  CHECK(cutoff->GetInt() == 64);
+
+  cutoff->SetInt(200, false);
+  voice.ApplyMidiCC(74, 40, &pickup, 3);
+  CHECK(cutoff->GetInt() == 200);
+  voice.ApplyMidiCC(74, 100, &pickup, 3);
+  CHECK(cutoff->GetInt() == 201);
+}
+
+TEST_CASE("MIDI voice CC pickup handles signed and quantized parameters") {
+  VoiceParameters voice;
+  MidiVoicePickup envelopePickup;
+  Variable *envelope = voice.FindVariable(FourCC::VoiceFilterEnvAmount);
+  REQUIRE(envelope != nullptr);
+  envelope->SetInt(-20, false);
+
+  voice.ApplyMidiCC(18, 0, &envelopePickup, 3);
+  voice.ApplyMidiCC(18, 30, &envelopePickup, 3);
+  CHECK(envelope->GetInt() == -20);
+  voice.ApplyMidiCC(18, 50, &envelopePickup, 3);
+  CHECK(envelope->GetInt() == -14);
+
+  MidiVoicePickup shapePickup;
+  voice.ApplyMidiCC(31, 127, &shapePickup, 3);
+  CHECK(voice.GetLFOSettings()->Get(0).shape_ == LFOShape::Sine);
+  voice.ApplyMidiCC(31, 10, &shapePickup, 3);
+  voice.ApplyMidiCC(31, 30, &shapePickup, 3);
+  CHECK(voice.GetLFOSettings()->Get(0).shape_ == LFOShape::Triangle);
+}

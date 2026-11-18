@@ -14,6 +14,7 @@
 #include "Player.h"
 #include "Application/Effects/DelayOutputEffect.h"
 #include "Application/Instruments/I_Instrument.h"
+#include "Application/Instruments/MidiVoicePickup.h"
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SampleSourceInstrument.h"
 #include "Application/Mixer/MixerService.h"
@@ -34,6 +35,51 @@
 #include <string.h>
 
 namespace {
+
+constexpr size_t MidiVoicePickupSourceCount = 2;
+constexpr size_t MidiVoicePickupCCCount = 35;
+
+PICOTRACKER_D2_BUFFER MidiVoicePickup
+    midiVoicePickup[MidiVoicePickupSourceCount][MIDI_INPUT_CHANNEL_COUNT]
+                   [MidiVoicePickupCCCount];
+PICOTRACKER_D2_BUFFER MidiVoicePickup
+    midiChannelLevelPickup[MidiVoicePickupSourceCount]
+                          [MIDI_INPUT_CHANNEL_COUNT];
+
+int MidiVoicePickupSourceIndex(MidiInputSource inputSource) {
+  return inputSource == MidiInputSource::Usb ? 1 : 0;
+}
+
+int MidiVoicePickupCCIndex(uint8_t cc) {
+  if (cc == 11) {
+    return 0;
+  }
+  if (cc == 10) {
+    return 1;
+  }
+  if (cc >= 14 && cc <= 41) {
+    return 2 + cc - 14;
+  }
+  if (cc >= 71 && cc <= 75) {
+    return 30 + cc - 71;
+  }
+  return -1;
+}
+
+void ResetAllMidiPickups() {
+  for (auto &source : midiVoicePickup) {
+    for (auto &channel : source) {
+      for (MidiVoicePickup &pickup : channel) {
+        pickup.Reset();
+      }
+    }
+  }
+  for (auto &source : midiChannelLevelPickup) {
+    for (MidiVoicePickup &pickup : source) {
+      pickup.Reset();
+    }
+  }
+}
 
 FourCC GetReverbCommandParameterId(TrackerCommand command) {
   switch (command) {
@@ -83,6 +129,7 @@ int32_t DecodeRetriggerOffset(int32_t value) {
 
 Player::Player() : Observable(&observers_), mixer_() {
   registerPlayerProfiles();
+  ResetAllMidiPickups();
 
   isRunning_ = false;
   viewData_ = 0;
@@ -126,6 +173,7 @@ bool Player::Init(Project *project, ViewData *viewData) {
 }
 
 void Player::BindProject(Project *project, ViewData *viewData) {
+  ResetAllMidiPickups();
   viewData_ = viewData;
   project_ = project;
   midiInputNoteState_.Clear();
@@ -1948,6 +1996,92 @@ void Player::PlayMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
   }
 }
 
+void Player::ApplyMidiVoiceCC(MidiInputSource inputSource, uint8_t midiChannel,
+                              uint8_t program, uint8_t cc, uint8_t value) {
+  if (!project_ || midiChannel >= MIDI_INPUT_CHANNEL_COUNT || value > 127) {
+    return;
+  }
+  InstrumentBank *bank = project_->GetInstrumentBank();
+  if (!bank) {
+    return;
+  }
+  bool assigned = false;
+  for (uint8_t channel = 0; channel < SONG_CHANNEL_COUNT; ++channel) {
+    assigned |= project_->song_.IsMidiInputChannelAssigned(channel);
+  }
+  int32_t instrumentIndex = program;
+  if (!assigned) {
+    if (midiChannel >= SONG_CHANNEL_COUNT) {
+      return;
+    }
+    I_Instrument *playing = mixer_.GetInstrument(midiChannel);
+    if (!playing) {
+      return;
+    }
+    instrumentIndex = -1;
+    for (int32_t index = 0; index < MAX_INSTRUMENT_COUNT; ++index) {
+      if (bank->GetInstrument(index) == playing) {
+        instrumentIndex = index;
+        break;
+      }
+    }
+  }
+  if (instrumentIndex < 0 || instrumentIndex >= MAX_INSTRUMENT_COUNT) {
+    return;
+  }
+  I_Instrument *instrument = bank->GetInstrument(instrumentIndex);
+  if (!instrument || instrument->IsEmpty() ||
+      !InstrumentTypeUsesModernAudioVoice(instrument->GetType())) {
+    return;
+  }
+  VoiceParameters *voice = bank->GetVoiceParameters(instrumentIndex);
+  if (!voice) {
+    return;
+  }
+  const int ccIndex = MidiVoicePickupCCIndex(cc);
+  if (ccIndex < 0) {
+    voice->ApplyMidiCC(cc, value);
+    return;
+  }
+  MidiVoicePickup &pickup =
+      midiVoicePickup[MidiVoicePickupSourceIndex(inputSource)][midiChannel]
+                     [ccIndex];
+  voice->ApplyMidiCC(cc, value, &pickup, static_cast<uint8_t>(instrumentIndex));
+}
+
+void Player::ApplyMidiChannelCC(MidiInputSource inputSource,
+                                uint8_t midiChannel, uint8_t cc,
+                                uint8_t value) {
+  if (!project_ || midiChannel >= SONG_CHANNEL_COUNT || cc != 7 ||
+      value > 127) {
+    return;
+  }
+
+  const int volume =
+      (static_cast<int>(value) * Project::MixerVolumeMaximum + 63) / 127;
+  MidiVoicePickup &pickup =
+      midiChannelLevelPickup[MidiVoicePickupSourceIndex(inputSource)]
+                            [midiChannel];
+  if (!pickup.Accept(volume, project_->GetChannelVolume(midiChannel), 0,
+                     Project::MixerVolumeMaximum, midiChannel)) {
+    return;
+  }
+  project_->SetChannelVolume(midiChannel, volume);
+}
+
+void Player::ResetMidiPickups(MidiInputSource inputSource,
+                              uint8_t midiChannel) {
+  if (midiChannel >= MIDI_INPUT_CHANNEL_COUNT) {
+    return;
+  }
+  for (MidiVoicePickup &pickup :
+       midiVoicePickup[MidiVoicePickupSourceIndex(inputSource)][midiChannel]) {
+    pickup.Reset();
+  }
+  midiChannelLevelPickup[MidiVoicePickupSourceIndex(inputSource)][midiChannel]
+      .Reset();
+}
+
 void Player::StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
                           uint8_t note) {
   if (midiChannel >= MIDI_INPUT_CHANNEL_COUNT || note > 127) {
@@ -1968,6 +2102,9 @@ void Player::StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
 }
 
 void Player::ReleaseMidiInputSource(MidiInputSource inputSource) {
+  for (uint8_t channel = 0; channel < MIDI_INPUT_CHANNEL_COUNT; ++channel) {
+    ResetMidiPickups(inputSource, channel);
+  }
   mixer_.Lock();
   const uint16_t releasedChannelMask =
       midiNoteTracker_.clearInputSource(inputSource);
@@ -1996,6 +2133,8 @@ void Player::OnMidiInputAssignmentChanged(uint8_t songChannel) {
   if (songChannel >= SONG_CHANNEL_COUNT) {
     return;
   }
+
+  ResetAllMidiPickups();
 
   mixer_.Lock();
   mixer_.StopChannel(songChannel);

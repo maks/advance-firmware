@@ -158,6 +158,13 @@ void Player::PlayMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
   gPlayerPlayNoteCallCount++;
 }
 
+void Player::ApplyMidiVoiceCC(MidiInputSource, uint8_t, uint8_t, uint8_t,
+                              uint8_t) {}
+
+void Player::ApplyMidiChannelCC(MidiInputSource, uint8_t, uint8_t, uint8_t) {}
+
+void Player::ResetMidiPickups(MidiInputSource, uint8_t) {}
+
 void Player::StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
                           uint8_t note) {
   (void)inputSource;

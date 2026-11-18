@@ -10,6 +10,7 @@
 
 #include "System/Console/n_assert.h"
 
+#include <algorithm>
 #include <strings.h>
 
 void VoiceParameters::InsertTypeVariable::SetString(const char *string,
@@ -126,5 +127,132 @@ void VoiceParameters::CopyFrom(const VoiceParameters &other) {
 void VoiceParameters::Reset() {
   for (auto it = variables_.begin(); it != variables_.end(); ++it) {
     (*it)->Reset();
+  }
+}
+
+void VoiceParameters::ApplyMidiCC(uint8_t cc, uint8_t value,
+                                  MidiVoicePickup *pickup, uint8_t instrument) {
+  if (value > 127) {
+    return;
+  }
+  struct Mapping {
+    uint8_t cc;
+    FourCC field;
+    int32_t min;
+    int32_t max;
+  };
+  const Mapping mappings[] = {
+      {11, FourCC::VoiceAmp, 0, 255},
+      {10, FourCC::VoicePan, 0, 255},
+      {14, FourCC::VoiceTriggerLength, 0, 96},
+      {15, FourCC::VoiceBandpassCutoff, 0, 255},
+      {16, FourCC::VoiceBandpassMix, 0, 255},
+      {17, FourCC::VoiceFilterType, 0, 255},
+      {18, FourCC::VoiceFilterEnvAmount, -64, 64},
+      {19, FourCC::VoiceFilterAttack, 0, 255},
+      {20, FourCC::VoiceFilterDecay, 0, 255},
+      {21, FourCC::VoiceFilterSustain, 0, 255},
+      {22, FourCC::VoiceFilterRelease, 0, 255},
+      {23, FourCC::VoiceAmpSustain, 0, 255},
+      {24, GetVoiceInsertTypeFourCC(0), 0, kVoiceInsertEffectCount - 1},
+      {25, GetVoiceInsertAmountFourCC(0), 0, 255},
+      {26, GetVoiceInsertPositionFourCC(0), 0, kVoiceInsertPositionCount - 1},
+      {27, GetVoiceInsertTypeFourCC(1), 0, kVoiceInsertEffectCount - 1},
+      {28, GetVoiceInsertAmountFourCC(1), 0, 255},
+      {29, GetVoiceInsertPositionFourCC(1), 0, kVoiceInsertPositionCount - 1},
+      {71, FourCC::VoiceFilterResonance, 0, 255},
+      {72, FourCC::VoiceAmpRelease, 0, 255},
+      {73, FourCC::VoiceAmpAttack, 0, 255},
+      {74, FourCC::VoiceFilterCutoff, 0, 255},
+      {75, FourCC::VoiceAmpDecay, 0, 255},
+  };
+  const auto scale = [value](int32_t min, int32_t max) {
+    return min + (static_cast<int32_t>(value) * (max - min) + 63) / 127;
+  };
+  for (const Mapping &mapping : mappings) {
+    if (mapping.cc == cc) {
+      Variable *variable = FindVariable(mapping.field);
+      if (variable) {
+        const int32_t scaled =
+            mapping.min == -64 && mapping.max == 64
+                ? (value < 64 ? static_cast<int32_t>(value) - 64
+                              : (static_cast<int32_t>(value) - 64) * 64 / 63)
+                : scale(mapping.min, mapping.max);
+        if (!pickup || pickup->Accept(scaled, variable->GetInt(), mapping.min,
+                                      mapping.max, instrument)) {
+          variable->SetInt(scaled);
+        }
+      }
+      return;
+    }
+  }
+  if (cc < 30 || cc > 41) {
+    return;
+  }
+  LFOSettings *lfo = GetLFOSettings();
+  const size_t slot = (cc - 30) / 6;
+  const uint8_t field = (cc - 30) % 6;
+  const LFOConfig config = lfo->Get(slot);
+  const auto shouldApply = [&](int32_t scaled, int32_t current, int32_t min,
+                               int32_t max) {
+    return !pickup || pickup->Accept(scaled, current, min, max, instrument);
+  };
+  switch (field) {
+  case 0: {
+    const int32_t max = static_cast<int32_t>(LFOTarget::Last) - 1;
+    const int32_t scaled = scale(0, max);
+    if (shouldApply(scaled, static_cast<int32_t>(config.target_), 0, max)) {
+      lfo->SetTarget(slot, static_cast<LFOTarget>(scaled));
+    }
+    break;
+  }
+  case 1: {
+    const int32_t max = static_cast<int32_t>(LFOShape::Last) - 1;
+    const int32_t scaled = scale(0, max);
+    if (shouldApply(scaled, static_cast<int32_t>(config.shape_), 0, max)) {
+      lfo->SetShape(slot, static_cast<LFOShape>(scaled));
+    }
+    break;
+  }
+  case 2: {
+    const int32_t scaled = scale(0, 1);
+    if (shouldApply(scaled, static_cast<int32_t>(config.triggerMode_), 0, 1)) {
+      lfo->SetTriggerMode(slot, static_cast<LFOTriggerMode>(scaled));
+    }
+    break;
+  }
+  case 3: {
+    const int32_t scaled = scale(0, 1);
+    if (shouldApply(scaled, static_cast<int32_t>(config.rateMode_), 0, 1)) {
+      lfo->SetRateMode(slot, static_cast<LFORateMode>(scaled));
+    }
+    break;
+  }
+  case 4:
+    if (config.rateMode_ == LFORateMode::Sync) {
+      const int32_t max = static_cast<int32_t>(GetLFOSyncDivisionCount()) - 1;
+      const int32_t scaled = scale(0, max);
+      if (shouldApply(scaled, config.syncIndex_, 0, max)) {
+        lfo->SetSyncIndex(slot, scaled);
+      }
+    } else {
+      const int32_t scaled = scale(0, 255);
+      if (shouldApply(scaled, config.rate_, 0, 255)) {
+        lfo->SetRateValue(slot, scaled);
+      }
+    }
+    break;
+  case 5: {
+    int min = 0;
+    int max = 0;
+    if (GetLFOTargetValueRange(config.target_, min, max)) {
+      const int32_t depthMax = std::max(-min, max);
+      const int32_t scaled = scale(0, depthMax);
+      if (shouldApply(scaled, config.depth_, 0, depthMax)) {
+        lfo->SetDepth(slot, scaled);
+      }
+    }
+    break;
+  }
   }
 }

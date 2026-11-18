@@ -203,6 +203,11 @@ public:
   void StopNote(unsigned short instrumentIndex, unsigned short channel);
   void PlayMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
                     uint8_t instrumentIndex, uint8_t note, uint8_t velocity);
+  void ApplyMidiVoiceCC(MidiInputSource inputSource, uint8_t midiChannel,
+                        uint8_t program, uint8_t cc, uint8_t value);
+  void ApplyMidiChannelCC(MidiInputSource inputSource, uint8_t midiChannel,
+                          uint8_t cc, uint8_t value);
+  void ResetMidiPickups(MidiInputSource inputSource, uint8_t midiChannel);
   void StopMidiNote(MidiInputSource inputSource, uint8_t midiChannel,
                     uint8_t note);
   void ReleaseMidiInputSource(MidiInputSource inputSource);
