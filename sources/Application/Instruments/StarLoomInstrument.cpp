@@ -34,6 +34,7 @@ namespace {
 
 constexpr size_t kOscillatorCount = 2;
 constexpr size_t kBraidsBlockSize = 24;
+constexpr size_t kCommandRampCount = 7;
 constexpr uint32_t kFallbackDeviceIdentitySeed = 0x5049434FU;
 const char *const kInteractionModeNames[] = {"MIX", "RING", "DIFF"};
 const char *const kSignatureNames[] = {"OFF", "1", "2", "3", "FULL"};
@@ -57,8 +58,46 @@ struct StarLoomSharedRuntime {
   braids::SignatureWaveshaper waveshaper;
 };
 
+enum CommandRampIndex : size_t {
+  Timbre1Ramp,
+  Timbre2Ramp,
+  Color1Ramp,
+  Color2Ramp,
+  Tune1Ramp,
+  Tune2Ramp,
+  MixRamp,
+};
+
+int DecodeSignedByte(uint8_t value) {
+  return value < 0x80 ? static_cast<int>(value)
+                      : static_cast<int>(value) - 0x100;
+}
+
+float GetCommandValue(const StarLoomCommandRamp &ramp, const Variable &base) {
+  return ramp.stepsRemaining != 0.0f ? ramp.current
+                                     : static_cast<float>(base.GetInt());
+}
+
+void AdvanceCommandRamp(StarLoomCommandRamp &ramp, float sequencerSteps) {
+  if (ramp.stepsRemaining <= 0.0f || sequencerSteps <= 0.0f) {
+    return;
+  }
+  const float advance = std::min(sequencerSteps, ramp.stepsRemaining);
+  const float fraction = advance / ramp.stepsRemaining;
+  ramp.current += (ramp.target - ramp.current) * fraction;
+  ramp.stepsRemaining -= advance;
+  if (ramp.stepsRemaining <= 1.0e-6f) {
+    ramp.current = ramp.target;
+    ramp.stepsRemaining = -1.0f;
+  }
+}
+
 StarLoomChannelRuntime runtime_[SONG_CHANNEL_COUNT];
 StarLoomSharedRuntime sharedRuntime_;
+#if defined(ADV) && !defined(HOST_TEST) && !defined(WASM)
+__attribute__((section(".RAM_D2"), aligned(4)))
+#endif
+StarLoomCommandRamp commandRamps_[SONG_CHANNEL_COUNT][kCommandRampCount] = {};
 #if defined(ADV) && !defined(HOST_TEST) && !defined(WASM)
 __attribute__((section(".RAM_EXT")))
 #endif
@@ -144,6 +183,11 @@ void StarLoomInstrument::OnStart() { tableState_.Reset(); };
 bool StarLoomInstrument::Start(int channel, unsigned char midinote,
                                InstrumentStartMode mode) {
   StarLoomChannelRuntime &runtime = GetRuntime(channel);
+  if (mode == InstrumentStartMode::NewNote) {
+    for (StarLoomCommandRamp &ramp : commandRamps_[channel]) {
+      ramp = {};
+    }
+  }
   if (mode != InstrumentStartMode::TiedNote) {
     runtime.oscillators[0].Init();
     runtime.oscillators[1].Init();
@@ -191,32 +235,16 @@ bool StarLoomInstrument::Render(int channel, AudioSample *buffer, int size,
 
   memset(buffer, 0, size * sizeof(AudioSample));
 
-  runtime.oscillators[0].set_shape(runtime.oscillatorShapes[0]);
-  runtime.oscillators[0].set_parameters(
-      timbre_.GetInt() * 128, color_.GetInt() * 128); // timbre and color
-  runtime.oscillators[1].set_shape(runtime.oscillatorShapes[1]);
-  runtime.oscillators[1].set_parameters(oscillator2Timbre_.GetInt() * 128,
-                                        oscillator2Color_.GetInt() * 128);
-  runtime.oscillators[0].set_pitch(StarLoomInstrumentDSP::CalculatePitch(
-      runtime.midiNote, oscillator1PitchOffset_.GetInt(), runtime.pitchOffset));
-  runtime.oscillators[1].set_pitch(StarLoomInstrumentDSP::CalculatePitch(
-      runtime.midiNote, oscillator2PitchOffset_.GetInt(), runtime.pitchOffset));
-
   uint8_t sync_buffer[kBraidsBlockSize] = {};
   int16_t oscillator1Buffer[kBraidsBlockSize];
   int16_t oscillator2Buffer[kBraidsBlockSize];
   const uint16_t signature = signature_.GetInt() * signature_.GetInt() * 4095;
-  const int32_t oscillator1Level =
-      StarLoomInstrumentDSP::Oscillator1LevelFromMix(mix_.GetInt());
-  const int32_t oscillator2Level =
-      StarLoomInstrumentDSP::Oscillator2LevelFromMix(mix_.GetInt());
   const auto interactionMode =
       static_cast<StarLoomInstrumentDSP::InteractionMode>(
           interactionMode_.GetInt());
-  // Skipping muted oscillators saves CPU and avoids consuming Braids' shared
-  // random stream, which keeps legacy single-oscillator patches stable.
-  const bool renderOscillator1 = oscillator1Level > 0;
-  const bool renderOscillator2 = oscillator2Level > 0;
+  SyncMaster *syncMaster = SyncMaster::GetInstance();
+  const float stepSampleCount =
+      syncMaster ? syncMaster->GetStepSampleCount() : 0.0f;
 
   size_t rendered = 0;
   if (runtime.hasPendingSample && size > 0) {
@@ -231,6 +259,47 @@ bool StarLoomInstrument::Render(int channel, AudioSample *buffer, int size,
     // Several Braids algorithms generate pairs and require an even size.
     const size_t renderBlockSize =
         StarLoomInstrumentDSP::BraidsRenderSize(outputBlockSize);
+    const float timbre1 =
+        GetCommandValue(commandRamps_[channel][Timbre1Ramp], timbre_);
+    const float timbre2 = GetCommandValue(commandRamps_[channel][Timbre2Ramp],
+                                          oscillator2Timbre_);
+    const float color1 =
+        GetCommandValue(commandRamps_[channel][Color1Ramp], color_);
+    const float color2 =
+        GetCommandValue(commandRamps_[channel][Color2Ramp], oscillator2Color_);
+    const float tune1 = GetCommandValue(commandRamps_[channel][Tune1Ramp],
+                                        oscillator1PitchOffset_);
+    const float tune2 = GetCommandValue(commandRamps_[channel][Tune2Ramp],
+                                        oscillator2PitchOffset_);
+    const float mixValue =
+        GetCommandValue(commandRamps_[channel][MixRamp], mix_);
+    const int32_t oscillator1Level =
+        StarLoomInstrumentDSP::Oscillator1LevelFromMix(
+            static_cast<int32_t>(std::lround(mixValue)));
+    const int32_t oscillator2Level =
+        StarLoomInstrumentDSP::Oscillator2LevelFromMix(
+            static_cast<int32_t>(std::lround(mixValue)));
+    const bool mixRampActive =
+        commandRamps_[channel][MixRamp].stepsRemaining > 0.0f;
+    // During a Mix ramp, render both oscillators so a previously muted voice
+    // can enter the crossfade without waiting for its next note trigger.
+    const bool renderOscillator1 = oscillator1Level > 0 || mixRampActive;
+    const bool renderOscillator2 = oscillator2Level > 0 || mixRampActive;
+
+    runtime.oscillators[0].set_shape(runtime.oscillatorShapes[0]);
+    runtime.oscillators[0].set_parameters(
+        static_cast<int32_t>(std::lround(timbre1 * 128.0f)),
+        static_cast<int32_t>(std::lround(color1 * 128.0f)));
+    runtime.oscillators[1].set_shape(runtime.oscillatorShapes[1]);
+    runtime.oscillators[1].set_parameters(
+        static_cast<int32_t>(std::lround(timbre2 * 128.0f)),
+        static_cast<int32_t>(std::lround(color2 * 128.0f)));
+    runtime.oscillators[0].set_pitch(StarLoomInstrumentDSP::CalculatePitch(
+        runtime.midiNote, static_cast<int32_t>(std::lround(tune1)),
+        runtime.pitchOffset));
+    runtime.oscillators[1].set_pitch(StarLoomInstrumentDSP::CalculatePitch(
+        runtime.midiNote, static_cast<int32_t>(std::lround(tune2)),
+        runtime.pitchOffset));
     if (renderOscillator1) {
       runtime.oscillators[0].Render(sync_buffer, oscillator1Buffer,
                                     renderBlockSize);
@@ -277,6 +346,13 @@ bool StarLoomInstrument::Render(int channel, AudioSample *buffer, int size,
     }
 
     rendered += outputBlockSize;
+    if (stepSampleCount > 0.0f) {
+      const float sequencerSteps =
+          static_cast<float>(outputBlockSize) / stepSampleCount;
+      for (StarLoomCommandRamp &ramp : commandRamps_[channel]) {
+        AdvanceCommandRamp(ramp, sequencerSteps);
+      }
+    }
   }
   return true;
 };
@@ -313,9 +389,75 @@ void StarLoomInstrument::Update(Observable &o, I_ObservableData *d){};
 
 void StarLoomInstrument::ProcessCommand(int channel, TrackerCommand cc,
                                         ushort value) {
-  (void)channel;
   if (cc == TrackerCommand::InstrumentCommandTable) {
     table_.SetInt(value);
+    return;
+  }
+
+  size_t rampIndex = kCommandRampCount;
+  Variable *base = nullptr;
+  int32_t minimum = 0;
+  int32_t maximum = 0xFF;
+  switch (cc) {
+  case TrackerCommand::InstrumentCommandStarLoomTimbre1:
+    rampIndex = Timbre1Ramp;
+    base = &timbre_;
+    break;
+  case TrackerCommand::InstrumentCommandStarLoomTimbre2:
+    rampIndex = Timbre2Ramp;
+    base = &oscillator2Timbre_;
+    break;
+  case TrackerCommand::InstrumentCommandStarLoomColor1:
+    rampIndex = Color1Ramp;
+    base = &color_;
+    break;
+  case TrackerCommand::InstrumentCommandStarLoomColor2:
+    rampIndex = Color2Ramp;
+    base = &oscillator2Color_;
+    break;
+  case TrackerCommand::InstrumentCommandStarLoomTune1:
+    rampIndex = Tune1Ramp;
+    base = &oscillator1PitchOffset_;
+    minimum = PitchOffset::MinimumCents;
+    maximum = PitchOffset::MaximumCents;
+    break;
+  case TrackerCommand::InstrumentCommandStarLoomTune2:
+    rampIndex = Tune2Ramp;
+    base = &oscillator2PitchOffset_;
+    minimum = PitchOffset::MinimumCents;
+    maximum = PitchOffset::MaximumCents;
+    break;
+  case TrackerCommand::InstrumentCommandStarLoomMix:
+    rampIndex = MixRamp;
+    base = &mix_;
+    minimum = -StarLoomInstrumentDSP::kLevelMax;
+    maximum = StarLoomInstrumentDSP::kLevelMax;
+    break;
+  default:
+    return;
+  }
+
+  const uint8_t durationTicks = static_cast<uint8_t>(value >> 8);
+  const uint8_t encodedOffset = static_cast<uint8_t>(value & 0xFF);
+  int offset = DecodeSignedByte(encodedOffset);
+  if (rampIndex == Tune1Ramp || rampIndex == Tune2Ramp) {
+    offset = std::clamp(offset, -127, 127);
+  }
+  StarLoomCommandRamp &ramp = commandRamps_[channel][rampIndex];
+  const float start = ramp.stepsRemaining != 0.0f
+                          ? ramp.current
+                          : static_cast<float>(base->GetInt());
+  const float target = static_cast<float>(
+      std::clamp(base->GetInt() + offset, static_cast<int>(minimum),
+                 static_cast<int>(maximum)));
+  const float durationSteps =
+      static_cast<float>(durationTicks) / SyncMaster::SlicesPerStep;
+  ramp.current = start;
+  ramp.target = target;
+  const bool rampActive = durationSteps > 0.0f && start != target;
+  ramp.stepsRemaining = rampActive ? durationSteps : -1.0f;
+  if (!rampActive) {
+    ramp.current = target;
   }
 };
 

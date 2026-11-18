@@ -114,6 +114,38 @@ Examples:
 - `FRS 08FF` will raise the resonance to screeching over 8 ticks (about 1.33
   default steps)
 
+## StarLoom parameter commands
+
+These commands control StarLoom's oscillator parameters relative to the values
+saved in the instrument. They work in both phrases and tables. The high byte
+`aa` is the ramp duration in ticks: `00` changes the value immediately, and
+`06` takes one default step. The low byte `bb` is a signed two's-complement
+offset from the saved value. The offset is a destination, not an amount added
+again on every tick. A new command retargets from the value currently reached
+by the previous command. A zero offset returns to the saved setting.
+
+| Command | Target | Offset |
+| --- | --- | --- |
+| `ST1 aabb` | Oscillator 1 Timbre | -128 to +127 parameter steps |
+| `ST2 aabb` | Oscillator 2 Timbre | -128 to +127 parameter steps |
+| `SC1 aabb` | Oscillator 1 Color | -128 to +127 parameter steps |
+| `SC2 aabb` | Oscillator 2 Color | -128 to +127 parameter steps |
+| `SP1 aabb` | Oscillator 1 Tune | -127 to +127 cents |
+| `SP2 aabb` | Oscillator 2 Tune | -127 to +127 cents |
+| `SMX aabb` | Oscillator Mix | -128 to +127 parameter steps |
+
+The target is clamped to the parameter's supported range. Timbre and Color are
+limited to `00..FF`, Mix to `-7F..+7F`, and Tune to the instrument's pitch range.
+Tune's `80` offset is clamped to -127 cents so its range stays symmetric.
+Color may sound continuous or step between choices depending on the selected
+oscillator shape.
+
+For example, if oscillator 1 Timbre is saved as `40`, `ST1 0C20` ramps it to
+`60` over 12 ticks, `ST1 06F0` ramps it to `30` over six ticks, and `ST1 0600`
+returns it to `40` over six ticks. `SP2 0AFF` ramps oscillator 2 down by one
+cent over ten ticks. `SMX 0C20` ramps Mix 32 steps above its saved value over 12
+ticks.
+
 ## REL --bb
 
 **Releases the current instrument after `bb` ticks.**
