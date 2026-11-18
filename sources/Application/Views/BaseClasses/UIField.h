@@ -53,6 +53,12 @@ public:
   // and parameter fields) derive from UIField directly.
   virtual bool HasVariable() const;
 
+  virtual bool GetKeyboardText(etl::string<MAX_VARIABLE_STRING_LENGTH> &text,
+                               uint8_t &maxLength) {
+    return false;
+  }
+  virtual void SetKeyboardText(const char *text) {}
+
 protected:
   uint8_t x_;
   uint8_t y_;

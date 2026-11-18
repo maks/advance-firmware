@@ -35,6 +35,9 @@ public:
   void OnEditClick();
   void ProcessClear() override;
   etl::string<MaxLength> GetString();
+  bool GetKeyboardText(etl::string<MAX_VARIABLE_STRING_LENGTH> &text,
+                       uint8_t &maxLength) override;
+  void SetKeyboardText(const char *text) override;
 
   // Set the variable this UITextField is bound to
   void SetVariable(Variable &v);

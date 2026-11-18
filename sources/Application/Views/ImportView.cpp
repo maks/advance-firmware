@@ -20,6 +20,7 @@
 #include "Application/Views/BaseClasses/BrowserEntrySort.h"
 #include "Application/Views/BaseClasses/BrowserPaging.h"
 #include "Application/Views/BaseClasses/BrowserPathUtils.h"
+#include "Application/Views/ModalDialogs/KeyboardModalView.h"
 #include "Application/Views/ModalDialogs/TextInputModalView.h"
 #include "Application/Views/SampleEditorView.h"
 #include "Application/Views/SampleImportUtils.h"
@@ -1244,8 +1245,8 @@ void ImportView::renameSample(const FileSystemEntry &entry, FileSystem *fs) {
   // just the filename. The extension is appended back on confirm.
   etl::string<MAX_TEXT_INPUT_LENGTH> defaultName =
       stripWavExtension<MAX_TEXT_INPUT_LENGTH>(entry.name.c_str());
-  TextInputModalView *renameModal = TextInputModalView::Create(
-      *this, "Rename sample", "Name:", MBBF_OK | MBBF_CANCEL, defaultName);
+  KeyboardModalView *renameModal = KeyboardModalView::Create(
+      *this, "RENAME SAMPLE", defaultName.c_str(), MAX_TEXT_INPUT_LENGTH);
   strncpy(pendingRenamePath_, samplePath.c_str(), PFILENAME_SIZE - 1);
   pendingRenamePath_[PFILENAME_SIZE - 1] = '\0';
   DoModal(
@@ -1265,9 +1266,9 @@ void ImportView::onConfirmRenameSample(View &, ModalView &dialog) {
     return;
   }
 
-  auto *renameModal = static_cast<TextInputModalView *>(&dialog);
+  auto *renameModal = static_cast<KeyboardModalView *>(&dialog);
   etl::string<MAX_INSTRUMENT_FILENAME_LENGTH> newName =
-      renameModal->GetTextField()->GetString().c_str();
+      renameModal->GetText().c_str();
   if (newName.empty() || hasPathSeparator(newName.c_str()) ||
       !ensureWavExtension(newName)) {
     MessageBox *mb = MessageBox::Create(*this, "Invalid filename", MBBF_OK);

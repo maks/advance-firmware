@@ -21,7 +21,7 @@ UITextField<MaxLength>::UITextField(
       defaultValue_(defaultValue_),
       clearDefaultOnFirstEdit_(clearDefaultOnFirstEdit) {}
 
-template <uint8_t MaxLength> UITextField<MaxLength>::~UITextField(){};
+template <uint8_t MaxLength> UITextField<MaxLength>::~UITextField() {};
 
 template <uint8_t MaxLength>
 void UITextField<MaxLength>::Draw(GUIWindow &w, int offset) {
@@ -160,6 +160,26 @@ template <uint8_t MaxLength>
 etl::string<MaxLength> UITextField<MaxLength>::GetString() {
   return src_->GetString().substr(0, MaxLength);
 };
+
+template <uint8_t MaxLength>
+bool UITextField<MaxLength>::GetKeyboardText(
+    etl::string<MAX_VARIABLE_STRING_LENGTH> &text, uint8_t &maxLength) {
+  text = src_->GetString();
+  if (clearDefaultOnFirstEdit_ && text == defaultValue_) {
+    text.clear();
+  }
+  maxLength = MaxLength;
+  return true;
+}
+
+template <uint8_t MaxLength>
+void UITextField<MaxLength>::SetKeyboardText(const char *text) {
+  src_->SetString(text, true);
+  currentChar_ = 0;
+  SetChanged();
+  NotifyObservers(
+      reinterpret_cast<I_ObservableData *>(static_cast<uintptr_t>(fourcc_)));
+}
 
 template <uint8_t MaxLength>
 void UITextField<MaxLength>::SetVariable(Variable &v) {

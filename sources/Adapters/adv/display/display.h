@@ -51,6 +51,11 @@ void display_visit_pixels(GraphicsRegion bounds, bool text,
                           PixelVisitor visitor, void *context);
 uint32_t display_visible_area(GraphicsRegion bounds, bool text);
 void display_draw_overlay_char(uint8_t x, uint8_t y, char c, bool invert);
+void display_set_overlay_font(uint8_t font);
+uint8_t display_overlay_font(void);
+void display_set_overlay_origin(int16_t x, int16_t y);
+int16_t display_overlay_origin_x(void);
+int16_t display_overlay_origin_y(void);
 // Remote clients retain their own overlay backing; no framebuffer readback.
 typedef enum {
   DISPLAY_OVERLAY_PUSH,

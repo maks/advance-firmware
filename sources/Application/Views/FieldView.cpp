@@ -12,6 +12,8 @@
  */
 
 #include "FieldView.h"
+#include "ModalDialogs/KeyboardModalView.h"
+#include "ModalDialogs/MessageBox.h"
 #include "System/Console/Trace.h"
 #include "UIFieldInputDispatcher.h"
 #include "UIIntVarField.h"
@@ -65,6 +67,20 @@ void FieldView::ProcessButtonMask(unsigned short mask, bool pressed) {
     if (focus_ == 0)
       return;
     focus_->SetFocus();
+  }
+
+  if (pressed && mask == EPBM_ENTER) {
+    etl::string<MAX_VARIABLE_STRING_LENGTH> text;
+    uint8_t maxLength = 0;
+    if (focus_->GetKeyboardText(text, maxLength)) {
+      auto *keyboard = KeyboardModalView::Create(*this, "EDIT TEXT",
+                                                 text.c_str(), maxLength);
+      DoModal(
+          keyboard,
+          ModalViewCallback::create<FieldView,
+                                    &FieldView::OnKeyboardTextEntered>(*this));
+      return;
+    }
   }
 
   if (UIFieldInputDispatcher::ProcessButtonMask(*focus_, mask)) {
@@ -253,6 +269,14 @@ void FieldView::ProcessButtonMask(unsigned short mask, bool pressed) {
         isDirty_ = true;
       }
     }
+  }
+}
+
+void FieldView::OnKeyboardTextEntered(View &, ModalView &dialog) {
+  if (dialog.GetReturnCode() == MBL_OK && focus_ != nullptr) {
+    focus_->SetKeyboardText(
+        static_cast<KeyboardModalView &>(dialog).GetText().c_str());
+    isDirty_ = true;
   }
 }
 

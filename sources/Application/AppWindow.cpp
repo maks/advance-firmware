@@ -64,6 +64,7 @@
 #include "UIFramework/BasicDatas/TextHighlight.h"
 #include "UIFramework/Interfaces/I_GUIWindowFactory.h"
 #include "Views/UIController.h"
+#include "config/MemorySections.h"
 #include "platform.h"
 #include <nanoprintf.h>
 #include <string.h>
@@ -134,7 +135,8 @@ void drawFullscreenBitmap(const ErrorBitmap &bitmap) {
 
 AppWindow *instance = 0;
 
-AppWindow::OverlayCache AppWindow::overlays_[GRAPHICS_OVERLAY_LIMIT];
+PICOTRACKER_D2_BUFFER AppWindow::OverlayCache
+    AppWindow::overlays_[GRAPHICS_OVERLAY_LIMIT];
 
 unsigned char AppWindow::_charScreen[TEXT_REGION_CAPACITY] TEXT_STATE_RAM;
 unsigned char AppWindow::_charScreenProp[TEXT_REGION_CAPACITY] TEXT_STATE_RAM;
@@ -343,8 +345,10 @@ void RequireDrawingLayout(bool ok) {
   critical_error_message(&g_deadBitmap, "Display error", details, 2,
                          DEFAULT_ERROR_MESSAGE_DELAY_SEC);
 }
-const TextRegionInfo overlayTextRegion = {
-    {8, 0, 704, 720, TEXT_FONT_NORMAL}, 0, 660, 8, 22, 30, 32, 24};
+TextRegionInfo OverlayTextRegion(uint8_t fontId, int16_t originX = 8,
+                                 int16_t originY = 0) {
+  return text_overlay_region(fontId, uint16_t(originX), uint16_t(originY));
+}
 } // namespace
 
 void AppWindow::FocusView(View &view, ViewType type) {
@@ -410,6 +414,10 @@ void AppWindow::BeginOverlay(uint32_t owner) {
     RequireDrawingLayout(i < GRAPHICS_OVERLAY_LIMIT);
     OverlayCache &o = overlays_[i];
     o.owner = owner;
+    o.font = TEXT_FONT_NORMAL;
+    o.originX = 8;
+    o.originY = 0;
+    o.outlineCells = {};
     o.placed = false;
     memset(o.chars, ' ', sizeof(o.chars));
     memset(o.props, 0, sizeof(o.props));
@@ -418,7 +426,21 @@ void AppWindow::BeginOverlay(uint32_t owner) {
     ++overlayDepth_;
   }
   overlayTarget_ = i + 1;
+  display_set_overlay_font(overlays_[i].font);
+  display_set_overlay_origin(overlays_[i].originX, overlays_[i].originY);
   display_select_target(overlayTarget_);
+}
+void AppWindow::SetOverlayFont(uint8_t font) {
+  RequireDrawingLayout(overlayTarget_ > 0 && text_font(font));
+  overlays_[overlayTarget_ - 1].font = font;
+  display_set_overlay_font(font);
+}
+void AppWindow::SetOverlayOrigin(int16_t x, int16_t y) {
+  RequireDrawingLayout(overlayTarget_ > 0);
+  OverlayCache &overlay = overlays_[overlayTarget_ - 1];
+  overlay.originX = x;
+  overlay.originY = y;
+  display_set_overlay_origin(x, y);
 }
 void AppWindow::SetOverlayBounds(GraphicsRegion bounds) {
   RequireDrawingLayout(overlayTarget_ > 0);
@@ -427,15 +449,41 @@ void AppWindow::SetOverlayBounds(GraphicsRegion bounds) {
     return;
   if (o.placed) {
     uint32_t owner = o.owner;
+    uint8_t font = o.font;
+    int16_t originX = o.originX, originY = o.originY;
     EndOverlay();
     CloseOverlay(owner);
     BeginOverlay(owner);
+    SetOverlayFont(font);
+    SetOverlayOrigin(originX, originY);
   }
   OverlayCache &next = overlays_[overlayTarget_ - 1];
   RequireDrawingLayout(display_push_overlay(bounds));
   next.bounds = bounds;
   next.placed = true;
   display_select_target(overlayTarget_);
+}
+void AppWindow::SetOverlayOutline(const GUIRect &cells, ColorDefinition color) {
+  RequireDrawingLayout(overlayTarget_ > 0);
+  OverlayCache &overlay = overlays_[overlayTarget_ - 1];
+  const GraphicsRegion next = {int16_t(cells.Left()), int16_t(cells.Top()),
+                               int16_t(cells.Width()), int16_t(cells.Height())};
+  if (!memcmp(&next, &overlay.outlineCells, sizeof(next)) &&
+      (!next.width || color == overlay.outlineColor)) {
+    return;
+  }
+  // Restore the old outline through the normal glyph cache before painting
+  // the new one. Outline coordinates refer to complete overlay text cells.
+  const GraphicsRegion &old = overlay.outlineCells;
+  for (int32_t y = std::max<int32_t>(0, old.y);
+       y < std::min<int32_t>(24, old.y + old.height); ++y) {
+    for (int32_t x = std::max<int32_t>(0, old.x);
+         x < std::min<int32_t>(32, old.x + old.width); ++x) {
+      overlay.previousProps[y * 32 + x] = 0xff;
+    }
+  }
+  overlay.outlineCells = next;
+  overlay.outlineColor = color;
 }
 void AppWindow::EndOverlay() {
   if (!overlayTarget_)
@@ -509,8 +557,9 @@ void AppWindow::DrawString(const char *string, const GUIPoint &pos,
     return;
   if (overlayTarget_) {
     OverlayCache &o = overlays_[overlayTarget_ - 1];
-    text_region_write(&overlayTextRegion, o.chars, o.props, pos._x, pos._y,
-                      string,
+    const TextRegionInfo region =
+        OverlayTextRegion(o.font, o.originX, o.originY);
+    text_region_write(&region, o.chars, o.props, pos._x, pos._y, string,
                       (colorIndex_ & 0x7f) | (props.invert_ ? PROP_INVERT : 0));
     return;
   }
@@ -618,26 +667,35 @@ void AppWindow::Flush() {
     return;
   }
   for (uint8_t region = 0; region < (overlay ? 1 : layout->count); ++region) {
-    const TextRegionInfo &r =
-        overlay ? overlayTextRegion : layout->regions[region];
+    const TextRegionInfo overlayRegion =
+        overlay ? OverlayTextRegion(overlay->font, overlay->originX,
+                                    overlay->originY)
+                : TextRegionInfo{};
+    const TextRegionInfo &r = overlay ? overlayRegion : layout->regions[region];
     props.region_ = region;
     // One reusable bitmap, including the fixed overlay grid. Keep the old
     // properties intact until boundary dependencies have been recorded.
     uint8_t dirty[(std::max(TEXT_REGION_CAPACITY, 32 * 24) + 7) / 8];
     const uint8_t *regionProps =
         overlay ? overlay->props : _charScreenProp + r.offset;
-    int top = overlay ? overlay->bounds.y / 30 : 0;
+    int top =
+        overlay
+            ? std::max(0, (overlay->bounds.y - r.definition.y) / r.glyph_height)
+            : 0;
     int bottom =
+        overlay ? std::min(24, (overlay->bounds.y + overlay->bounds.height -
+                                r.definition.y + r.glyph_height - 1) /
+                                   r.glyph_height)
+                : r.rows;
+    int left =
         overlay
-            ? std::min(24,
-                       (overlay->bounds.y + overlay->bounds.height + 29) / 30)
-            : r.rows;
-    int left = overlay ? std::max(0, (overlay->bounds.x - 8) / 22) : 0;
-    int right =
-        overlay
-            ? std::min(
-                  32, (overlay->bounds.x + overlay->bounds.width - 8 + 21) / 22)
-            : r.columns;
+            ? std::max(0, (overlay->bounds.x - r.definition.x) / r.glyph_width)
+            : 0;
+    int right = overlay
+                    ? std::min(32, (overlay->bounds.x + overlay->bounds.width -
+                                    r.definition.x + r.glyph_width - 1) /
+                                       r.glyph_width)
+                    : r.columns;
     // Match dirty scanning to the glyph/corner painting bounds. Small overlays
     // retain full-grid storage but no longer scan all 768 cells each flush.
     TextHighlightChanges(
@@ -789,6 +847,26 @@ void AppWindow::Flush() {
                              GUIWindow::DrawRect(rect);
                            });
       }
+    }
+  }
+  if (overlay && overlay->outlineCells.width > 0 &&
+      overlay->outlineCells.height > 0) {
+    const TextRegionInfo region =
+        OverlayTextRegion(overlay->font, overlay->originX, overlay->originY);
+    const GraphicsRegion &cells = overlay->outlineCells;
+    const int32_t left = region.definition.x + cells.x * region.glyph_width +
+                         region.glyph_width / 2 - 1;
+    const int32_t top = region.definition.y + cells.y * region.glyph_height +
+                        region.glyph_height / 2 - 1;
+    const int32_t right = left + (cells.width - 1) * region.glyph_width + 2;
+    const int32_t bottom = top + (cells.height - 1) * region.glyph_height + 2;
+    GUIWindow::SetCurrentRectColor(GetColor(overlay->outlineColor));
+    GUIRect edges[] = {GUIRect(left, top, right, top + 2),
+                       GUIRect(left, bottom - 2, right, bottom),
+                       GUIRect(left, top, left + 2, bottom),
+                       GUIRect(right - 2, top, right, bottom)};
+    for (GUIRect &edge : edges) {
+      GUIWindow::DrawRect(edge);
     }
   }
   GUIWindow::Flush();

@@ -20,6 +20,8 @@ GraphicsRegion graphicsRegions[GRAPHICS_REGION_LIMIT]{};
 uint8_t graphicsCount = 0;
 uint32_t graphicsRevision = 0;
 uint8_t activeTarget = 0;
+uint8_t overlayFont = TEXT_FONT_NORMAL;
+int16_t overlayOriginX = 8, overlayOriginY = 0;
 DisplayOverlayObserver overlayObserver = nullptr;
 uint16_t fullscreenOverlay[DISPLAY_WIDTH * DISPLAY_HEIGHT]{};
 uint16_t partialOverlay[DISPLAY_WIDTH * 90]{};
@@ -187,6 +189,14 @@ const TextRegionLayout *display_text_layout(void) {
 
 void display_putc_region(uint8_t, uint8_t, uint8_t, char, bool) {}
 void display_draw_overlay_char(uint8_t, uint8_t, char, bool) {}
+void display_set_overlay_font(uint8_t font) { overlayFont = font; }
+uint8_t display_overlay_font(void) { return overlayFont; }
+void display_set_overlay_origin(int16_t x, int16_t y) {
+  overlayOriginX = x;
+  overlayOriginY = y;
+}
+int16_t display_overlay_origin_x(void) { return overlayOriginX; }
+int16_t display_overlay_origin_y(void) { return overlayOriginY; }
 
 void critical_error_message(const ErrorBitmap *, const char *,
                             const char *const *, size_t, int) {

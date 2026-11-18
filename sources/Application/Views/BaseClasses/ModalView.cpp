@@ -9,6 +9,7 @@
 
 #include "ModalView.h"
 #include "Application/AppWindow.h"
+#include <algorithm>
 
 uint32_t ModalView::nextInstanceId_ = 0;
 
@@ -51,6 +52,10 @@ GUIPoint ModalView::GetAnchor() {
 }
 
 void ModalView::SetWindow(int width, int height) {
+  SetWindow(width, height, TEXT_FONT_NORMAL);
+}
+
+void ModalView::SetWindow(int width, int height, uint8_t font) {
 
   if (width > 28) {
     width = 28;
@@ -64,9 +69,18 @@ void ModalView::SetWindow(int width, int height) {
   if (top_ < 2) {
     top_ = 2;
   }
+  const TextFontInfo *metrics = text_font(font);
+  static_cast<AppWindow &>(w_).SetOverlayFont(font);
+  const int16_t originX = int16_t(
+      8 + std::max(0, (720 / metrics->width - 32) / 2) * metrics->width);
+  const int16_t originY = int16_t((720 - (height + 4) * metrics->height) / 2 -
+                                  (top_ - 2) * metrics->height);
+  static_cast<AppWindow &>(w_).SetOverlayOrigin(originX, originY);
   static_cast<AppWindow &>(w_).SetOverlayBounds(
-      {int16_t(8 + (left_ - 2) * 22), int16_t((top_ - 2) * 30),
-       int16_t((width + 4) * 22), int16_t((height + 4) * 30)});
+      {int16_t(originX + (left_ - 2) * metrics->width),
+       int16_t(originY + (top_ - 2) * metrics->height),
+       int16_t((width + 4) * metrics->width),
+       int16_t((height + 4) * metrics->height)});
   ClearTextRect(-1, -1, width + 2, height + 2);
 
   SetColor(CD_ACCENT);

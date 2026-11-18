@@ -65,6 +65,7 @@ void advGUIWindowImp::DrawChar(const char c, const GUIPoint &pos,
   if (x < 0 || y < 0 || x > 255 || y > 255)
     return;
   uint8_t target = display_target();
+  uint8_t font = target ? display_overlay_font() : TEXT_FONT_NORMAL;
   if (target) {
     if (x >= 32 || y >= 24)
       return;
@@ -77,9 +78,11 @@ void advGUIWindowImp::DrawChar(const char c, const GUIPoint &pos,
   if (!remoteUIEnabled_)
     return;
   GraphicsRegion bounds;
-  uint8_t font = TEXT_FONT_NORMAL;
   if (target) {
-    bounds = {int16_t(8 + x * 22), int16_t(y * 30), 22, 30};
+    const TextFontInfo *metrics = text_font(font);
+    bounds = {int16_t(display_overlay_origin_x() + x * metrics->width),
+              int16_t(display_overlay_origin_y() + y * metrics->height),
+              metrics->width, metrics->height};
   } else {
     int32_t column = x, row = y;
     uint8_t id = p.region_;

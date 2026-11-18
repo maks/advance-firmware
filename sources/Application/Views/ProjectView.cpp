@@ -20,6 +20,7 @@
 #include "Application/Utils/randomnames.h"
 #include "Application/Views/BaseClasses/BrowserPathUtils.h"
 #include "Application/Views/ImportView.h"
+#include "Application/Views/ModalDialogs/KeyboardModalView.h"
 #include "Application/Views/ModalDialogs/MessageBox.h"
 #include "Application/Views/ModalDialogs/RenderProgressModal.h"
 #include "Application/Views/SampleEditorView.h"
@@ -334,6 +335,13 @@ void ProjectView::ProcessButtonMask(unsigned short mask, bool pressed) {
   int8_t editedMidiChannel = -1;
   uint8_t previousDefaultProgram = MIDI_INPUT_DEFAULT_PROGRAM;
   UIField *focusedField = GetFocus();
+  if (focusedField == nameField_ && (mask & (EPBM_ENTER | EPBM_EDIT)) &&
+      mask != (EPBM_EDIT | EPBM_PLAY)) {
+    if (mask == EPBM_ENTER || mask == EPBM_EDIT) {
+      nameField_->OnClick();
+    }
+    return;
+  }
   for (size_t i = 0; i < midiMapField_.size(); i++) {
     if (focusedField == &midiMapField_[i]) {
       editedSongChannel = static_cast<int8_t>(i);
@@ -349,7 +357,9 @@ void ProjectView::ProcessButtonMask(unsigned short mask, bool pressed) {
     }
   }
 
-  FieldView::ProcessButtonMask(mask, pressed);
+  if (focusedField != nameField_ || !(mask & (EPBM_ENTER | EPBM_EDIT))) {
+    FieldView::ProcessButtonMask(mask, pressed);
+  }
 
   if (editedSongChannel >= 0 &&
       previousMidiMapValue !=
@@ -564,11 +574,17 @@ void ProjectView::Update(Observable &, I_ObservableData *data) {
     persist->SaveProjectState(projName);
     break;
   }
-  case FourCC::ActionProjectRename:
-    Trace::Log("PROJECTVIEW", "Project renamed! prev name:%s",
-               nameField_->GetString().c_str());
-    saveAsFlag_ = true;
+  case FourCC::ActionProjectRename: {
+    const auto name = getProjectName();
+    auto *keyboard = KeyboardModalView::Create(
+        *this, "PROJECT NAME", name == UNNAMED_PROJECT_NAME ? "" : name.c_str(),
+        MAX_PROJECT_NAME_LENGTH, true);
+    DoModal(
+        keyboard,
+        ModalViewCallback::create<ProjectView,
+                                  &ProjectView::OnProjectNameEntered>(*this));
     break;
+  }
   case FourCC::ActionBrowse: {
     if (CanExit()) {
       ViewType vt = VT_SELECTPROJECT;
@@ -682,6 +698,18 @@ void ProjectView::OnFocus() {
   // by the saveAsFlag_ flag being set
   if (!saveAsFlag_) {
     oldProjName_ = getProjectName();
+  }
+}
+
+void ProjectView::OnProjectNameEntered(View &, ModalView &dialog) {
+  if (dialog.GetReturnCode() != MBL_OK) {
+    return;
+  }
+  auto name = static_cast<KeyboardModalView &>(dialog).GetText();
+  if (name != getProjectName()) {
+    project_->SetProjectName(name.data());
+    saveAsFlag_ = true;
+    isDirty_ = true;
   }
 }
 

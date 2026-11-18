@@ -58,6 +58,9 @@ public:
   static constexpr uint32_t PowerOverlayOwner = UINT32_MAX;
   bool HasOverlay(uint32_t owner) const;
   void BeginOverlay(uint32_t owner);
+  void SetOverlayFont(uint8_t font);
+  void SetOverlayOrigin(int16_t x, int16_t y);
+  void SetOverlayOutline(const GUIRect &cells, ColorDefinition color);
   void SetOverlayBounds(GraphicsRegion bounds);
   void EndOverlay();
   void CloseOverlay(uint32_t owner);
@@ -120,6 +123,10 @@ private:
     uint32_t owner;
     GraphicsRegion bounds;
     bool placed;
+    uint8_t font;
+    int16_t originX, originY;
+    GraphicsRegion outlineCells;
+    ColorDefinition outlineColor;
     uint8_t chars[32 * 24], props[32 * 24], previous[32 * 24],
         previousProps[32 * 24];
   };

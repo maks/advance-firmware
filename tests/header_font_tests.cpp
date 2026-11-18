@@ -968,3 +968,14 @@ TEST_CASE("Tiny stereo meter renders independently of adjacent body text") {
         0);
   Reset();
 }
+
+TEST_CASE("Positioned overlay retains its logical text grid") {
+  const TextRegionInfo region = text_overlay_region(TEXT_FONT_NORMAL, 8, 240);
+  CHECK(region.columns == 32);
+  CHECK(region.rows == 24);
+  CHECK(region.definition.y == 240);
+  uint8_t chars[32 * 24] = {};
+  uint8_t props[32 * 24] = {};
+  CHECK(text_region_write(&region, chars, props, 3, 7, "Load song", 2) == 9);
+  CHECK(std::memcmp(chars + 7 * 32 + 3, "Load song", 9) == 0);
+}
