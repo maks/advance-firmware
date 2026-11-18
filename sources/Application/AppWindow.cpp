@@ -64,6 +64,7 @@
 #include "UIFramework/BasicDatas/TextHighlight.h"
 #include "UIFramework/Interfaces/I_GUIWindowFactory.h"
 #include "Views/UIController.h"
+#include "config/MemorySections.h"
 #include "platform.h"
 #include <nanoprintf.h>
 #include <string.h>
@@ -134,7 +135,8 @@ void drawFullscreenBitmap(const ErrorBitmap &bitmap) {
 
 AppWindow *instance = 0;
 
-AppWindow::OverlayCache AppWindow::overlays_[GRAPHICS_OVERLAY_LIMIT];
+PICOTRACKER_D2_BUFFER AppWindow::OverlayCache
+    AppWindow::overlays_[GRAPHICS_OVERLAY_LIMIT];
 
 unsigned char AppWindow::_charScreen[TEXT_REGION_CAPACITY] TEXT_STATE_RAM;
 unsigned char AppWindow::_charScreenProp[TEXT_REGION_CAPACITY] TEXT_STATE_RAM;
