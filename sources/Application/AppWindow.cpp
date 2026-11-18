@@ -1329,7 +1329,7 @@ void AppWindow::AnimationUpdate() {
   }
 }
 
-void AppWindow::LayoutChildren(){};
+void AppWindow::LayoutChildren() {};
 
 void AppWindow::Update(Observable &o, I_ObservableData *d) {
   if (d && (uintptr_t)d == (uintptr_t)FourCC::VarProjectName) {
