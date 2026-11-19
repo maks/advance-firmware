@@ -381,6 +381,11 @@ The two columns in the **Voices** section control the oscillators independently.
 - **Color:** Adjusts a second characteristic of the selected shape. Like **Timbre**, its effect depends on the current shape.
 - **Tune:** Tunes each oscillator relative to the tracker note by up to four octaves in either direction. Use matching values for a unified sound, small differences for detuning, or larger intervals to create octaves and chords.
 
+The `ST1`, `ST2`, `SC1`, `SC2`, `SP1`, `SP2` and `SMX` commands can animate
+Timbre, Color, Tune and Mix from phrases or tables. Their offsets are relative
+to the saved instrument settings; see [StarLoom parameter commands](commands.md#starloom-parameter-commands)
+for ranges, timing and examples.
+
 ### Table and Voice Processing
 
 - **Table:** Selects a table for the instrument to run.

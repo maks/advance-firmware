@@ -8,6 +8,7 @@
 
 #include "Application/Instruments/CommandList.h"
 #include "doctest/doctest.h"
+#include <cstring>
 #include <initializer_list>
 
 namespace {
@@ -75,6 +76,17 @@ TEST_CASE("Commands declare whether phrase and table contexts support them") {
       TrackerCommand::InstrumentCommandDelayFeedback, CommandContext::Phrase));
   CHECK(CommandList::IsCommandAllowed(
       TrackerCommand::InstrumentCommandDelayFeedback, CommandContext::Table));
+  for (const TrackerCommand command :
+       {TrackerCommand::InstrumentCommandStarLoomTimbre1,
+        TrackerCommand::InstrumentCommandStarLoomTimbre2,
+        TrackerCommand::InstrumentCommandStarLoomColor1,
+        TrackerCommand::InstrumentCommandStarLoomColor2,
+        TrackerCommand::InstrumentCommandStarLoomTune1,
+        TrackerCommand::InstrumentCommandStarLoomTune2,
+        TrackerCommand::InstrumentCommandStarLoomMix}) {
+    CHECK(CommandList::IsCommandAllowed(command, CommandContext::Phrase));
+    CHECK(CommandList::IsCommandAllowed(command, CommandContext::Table));
+  }
 }
 
 TEST_CASE("Command navigation only returns commands supported by its context") {
@@ -86,6 +98,56 @@ TEST_CASE("Command navigation only returns commands supported by its context") {
     CheckReverseNavigation(context, CommandList::GetNextAlpha,
                            CommandList::GetPrevAlpha);
   }
+}
+
+TEST_CASE("StarLoom command IDs and mnemonics are stable") {
+  CHECK(static_cast<uint8_t>(
+            TrackerCommand::InstrumentCommandStarLoomTimbre1) == 199);
+  CHECK(static_cast<uint8_t>(
+            TrackerCommand::InstrumentCommandStarLoomTimbre2) == 200);
+  CHECK(static_cast<uint8_t>(TrackerCommand::InstrumentCommandStarLoomColor1) ==
+        201);
+  CHECK(static_cast<uint8_t>(TrackerCommand::InstrumentCommandStarLoomColor2) ==
+        202);
+  CHECK(static_cast<uint8_t>(TrackerCommand::InstrumentCommandStarLoomTune1) ==
+        203);
+  CHECK(static_cast<uint8_t>(TrackerCommand::InstrumentCommandStarLoomTune2) ==
+        204);
+  CHECK(static_cast<uint8_t>(TrackerCommand::InstrumentCommandStarLoomMix) ==
+        205);
+
+  CHECK(std::strcmp(
+            TrackerCommand(TrackerCommand::InstrumentCommandStarLoomTimbre1)
+                .c_str(),
+            "ST1") == 0);
+  CHECK(std::strcmp(
+            TrackerCommand(TrackerCommand::InstrumentCommandStarLoomTimbre2)
+                .c_str(),
+            "ST2") == 0);
+  CHECK(std::strcmp(
+            TrackerCommand(TrackerCommand::InstrumentCommandStarLoomColor1)
+                .c_str(),
+            "SC1") == 0);
+  CHECK(std::strcmp(
+            TrackerCommand(TrackerCommand::InstrumentCommandStarLoomColor2)
+                .c_str(),
+            "SC2") == 0);
+  CHECK(
+      std::strcmp(TrackerCommand(TrackerCommand::InstrumentCommandStarLoomTune1)
+                      .c_str(),
+                  "SP1") == 0);
+  CHECK(
+      std::strcmp(TrackerCommand(TrackerCommand::InstrumentCommandStarLoomTune2)
+                      .c_str(),
+                  "SP2") == 0);
+  CHECK(
+      std::strcmp(
+          TrackerCommand(TrackerCommand::InstrumentCommandStarLoomMix).c_str(),
+          "SMX") == 0);
+
+  CHECK(static_cast<uint8_t>(TrackerCommand::InstrumentCommandFilterCut) == 20);
+  CHECK(static_cast<uint8_t>(
+            TrackerCommand::InstrumentCommandReverbModulationLevel) == 198);
 }
 
 TEST_CASE("Delay effect commands clamp only their target byte") {

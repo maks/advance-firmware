@@ -61,6 +61,13 @@ struct TrackerCommand {
     InstrumentCommandReverbTailTone = 196,        // RVT
     InstrumentCommandReverbModulationSpeed = 197, // RVS
     InstrumentCommandReverbModulationLevel = 198, // RVL
+    InstrumentCommandStarLoomTimbre1 = 199,       // ST1
+    InstrumentCommandStarLoomTimbre2 = 200,       // ST2
+    InstrumentCommandStarLoomColor1 = 201,        // SC1
+    InstrumentCommandStarLoomColor2 = 202,        // SC2
+    InstrumentCommandStarLoomTune1 = 203,         // SP1
+    InstrumentCommandStarLoomTune2 = 204,         // SP2
+    InstrumentCommandStarLoomMix = 205,           // SMX
     Invalid = 255,
   };
   ETL_DECLARE_ENUM_TYPE(TrackerCommand, uint8_t)
@@ -101,6 +108,13 @@ struct TrackerCommand {
   ETL_ENUM_TYPE(InstrumentCommandReverbTailTone, "RVT")
   ETL_ENUM_TYPE(InstrumentCommandReverbModulationSpeed, "RVS")
   ETL_ENUM_TYPE(InstrumentCommandReverbModulationLevel, "RVL")
+  ETL_ENUM_TYPE(InstrumentCommandStarLoomColor1, "SC1")
+  ETL_ENUM_TYPE(InstrumentCommandStarLoomColor2, "SC2")
+  ETL_ENUM_TYPE(InstrumentCommandStarLoomMix, "SMX")
+  ETL_ENUM_TYPE(InstrumentCommandStarLoomTune1, "SP1")
+  ETL_ENUM_TYPE(InstrumentCommandStarLoomTune2, "SP2")
+  ETL_ENUM_TYPE(InstrumentCommandStarLoomTimbre1, "ST1")
+  ETL_ENUM_TYPE(InstrumentCommandStarLoomTimbre2, "ST2")
   ETL_ENUM_TYPE(InstrumentCommandInstrumentRetrigger, "IRT")
   ETL_ENUM_TYPE(InstrumentCommandMidiChord, "MCH")
   ETL_END_ENUM_TYPE

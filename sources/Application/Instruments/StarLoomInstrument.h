@@ -23,6 +23,13 @@
 #include "I_Instrument.h"
 #include "VoiceParameters.h"
 
+struct StarLoomCommandRamp {
+  float current = 0.0f;
+  float target = 0.0f;
+  // Positive: ramping; negative: hold the override; zero: use the saved value.
+  float stepsRemaining = 0.0f;
+};
+
 class StarLoomInstrument : public I_Instrument, I_Observer {
 
 public:
